@@ -1,6 +1,17 @@
-// 기본 내장 부부 전용 Supabase 연결 정보
-const DEFAULT_SUPABASE_URL = 'https://jfmwbjefszwvfxuxtgzg.supabase.co';
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_U5bm3JSYDqZq3Sa3wifm5Q_uYBPSNpp';
+// 부부 전용 원클릭 연결 파라미터 처리 (최초 1회 링크 접속 시 폰에 영구 저장 후 주소창에서 숨김)
+(function bootstrapCoupleSecretFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const u = params.get('sb_url');
+    const k = params.get('sb_key');
+    if (u && k) {
+      localStorage.setItem('cal_supabase_url', u.trim());
+      localStorage.setItem('cal_supabase_key', k.trim());
+      const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  } catch (e) {}
+})();
 
 // ==============================================================================
 // 🌐 Supabase 부부 기기 실시간 동기화 모듈
@@ -702,8 +713,8 @@ let state = {
   diaryFilterYM: formatDate(new Date()).slice(0, 7),
   diarySearch: '',
   showCompletedTodos: false,
-  supabaseUrl: localStorage.getItem('cal_supabase_url') || DEFAULT_SUPABASE_URL,
-  supabaseKey: localStorage.getItem('cal_supabase_key') || DEFAULT_SUPABASE_KEY,
+  supabaseUrl: localStorage.getItem('cal_supabase_url') || '',
+  supabaseKey: localStorage.getItem('cal_supabase_key') || '',
   husbandName: localStorage.getItem('cal_name_husband') || '강현우',
   wifeName: localStorage.getItem('cal_name_wife') || '김시문',
   selectedOwner: 'both',
