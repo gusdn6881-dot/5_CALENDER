@@ -139,7 +139,9 @@
       <div class="card-theme rounded-2xl p-4 shadow-sm border">
         <div class="flex items-center justify-between mb-2">
           <h3 class="text-base font-extrabold text-slate-800">⏰ 다가오는 약속 <span id="upcomingCount" class="text-xs font-bold text-slate-400"></span></h3>
-          <span class="text-[11px] text-slate-400">눌러서 자세히 보기</span>
+          <button id="btnOpenEventSearch" type="button" class="text-xs font-bold text-theme-primary bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition">
+            <i class="fa-solid fa-magnifying-glass text-[10px]"></i> 약속 찾기
+          </button>
         </div>
         <div id="upcomingList" class="space-y-1.5"></div>
         <button id="btnShowAllUpcoming" class="hidden mt-2 w-full text-sm font-bold text-theme-primary bg-slate-100 hover:bg-slate-200 rounded-xl py-2.5 transition"></button>
@@ -358,6 +360,12 @@
         <h3 class="text-lg font-extrabold text-slate-800">⏰ 다가오는 약속 전체</h3>
         <button id="btnCloseUpcomingSheet" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 text-lg" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
       </div>
+      <div class="px-4 pb-2 flex-shrink-0">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
+          <input id="eventSearchInput" type="search" placeholder="지난·다음 약속 찾기 (예: 병원, 생일, 여행)" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 ring-theme-primary">
+        </div>
+      </div>
       <div class="flex gap-2 overflow-x-auto px-4 pt-1 pb-3 flex-shrink-0">
         <button class="up-filter-btn whitespace-nowrap px-3.5 py-1.5 rounded-full text-sm font-bold transition" data-up-filter="all">전체</button>
         <button class="up-filter-btn whitespace-nowrap px-3.5 py-1.5 rounded-full text-sm font-bold transition" data-up-filter="husband">강현우</button>
@@ -427,9 +435,26 @@
         </div>
       </div>
 
-      <div id="dateFieldWrap">
-        <label class="block text-sm font-bold text-slate-600 mb-1.5">날짜</label>
-        <input type="date" id="inputItemDate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm">
+      <div id="dateFieldWrap" class="space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-sm font-bold text-slate-600 mb-1">시작 날짜</label>
+            <input type="date" id="inputItemDate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-sm">
+          </div>
+          <div id="endDateWrap">
+            <label class="block text-sm font-bold text-slate-600 mb-1">종료 날짜 <span class="text-[11px] font-normal text-slate-400">(여행 등)</span></label>
+            <input type="date" id="inputItemEndDate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-sm">
+          </div>
+        </div>
+      </div>
+
+      <div id="repeatFieldWrap" class="hidden">
+        <label class="block text-sm font-bold text-slate-600 mb-1.5">반복할까요?</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" class="repeat-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-repeat="none">한 번만</button>
+          <button type="button" class="repeat-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-repeat="monthly">🔁 매달 반복</button>
+          <button type="button" class="repeat-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-repeat="yearly">🎂 매년 반복</button>
+        </div>
       </div>
 
       <div id="timeFieldWrap" class="hidden">
@@ -496,3 +521,4 @@
   <script src="app.js"></script>
 </body>
 </html>
+
