@@ -58,14 +58,7 @@ async function pullRemoteSupabaseData() {
       isRemoteUpdating = true;
       const localMap = new Map(state.events.map(e => [e.id, e]));
       remoteEvents.forEach(re => {
-        localMap.set(re.id, {
-          id: re.id,
-          title: re.title,
-          date: (re.start_time || re.date || '').slice(0, 10),
-          time: re.time || (re.start_time ? re.start_time.slice(11, 16) : ''),
-          owner: re.owner || 'both',
-          color: re.color || OWNER_COLORS[re.owner || 'both']
-        });
+        localMap.set(re.id, parseRemoteEvent(re));
       });
       state.events = Array.from(localMap.values());
       saveEvents();
@@ -127,15 +120,7 @@ function setupSupabaseRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, payload => {
       if (isRemoteUpdating) return;
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        const item = payload.new;
-        const mapped = {
-          id: item.id,
-          title: item.title,
-          date: (item.start_time || item.date || '').slice(0, 10),
-          time: item.time || (item.start_time ? item.start_time.slice(11, 16) : ''),
-          owner: item.owner || 'both',
-          color: item.color || OWNER_COLORS[item.owner || 'both']
-        };
+        const mapped = parseRemoteEvent(payload.new);
         const idx = state.events.findIndex(e => e.id === mapped.id);
         if (idx >= 0) state.events[idx] = mapped;
         else state.events.push(mapped);
@@ -205,10 +190,10 @@ async function pushRemoteEvent(action, item) {
         title: item.title,
         date: item.date,
         time: item.time || '',
-        owner: item.owner || 'both',
+        owner: (item.owner || 'both') + (item.repeat && item.repeat !== 'none' ? '|' + item.repeat : ''),
         color: item.color,
         start_time: item.date + (item.time ? 'T' + item.time + ':00' : 'T00:00:00'),
-        end_time: item.date + (item.time ? 'T' + item.time + ':00' : 'T23:59:59')
+        end_time: (item.endDate && item.endDate >= item.date ? item.endDate : item.date) + 'T23:59:59'
       };
       await supabaseClient.from('events').upsert(payload);
     }
@@ -312,6 +297,88 @@ const THEMES = {
   violet: { primary: '#7C3AED', secondary: '#EC4899', bg: '#FAF5FF', card: 'rgba(255, 255, 255, 0.94)', text: '#1E1B4B' },
   dark: { primary: '#1E293B', secondary: '#F43F5E', bg: '#F1F5F9', card: 'rgba(255, 255, 255, 0.94)', text: '#0F172A' }
 };
+
+function parseRemoteEvent(re) {
+  const rawOwner = re.owner || 'both';
+  const parts = rawOwner.split('|');
+  const owner = parts[0] || 'both';
+  const repeat = parts[1] || re.repeat || 'none';
+  const date = (re.date || re.start_time || '').slice(0, 10);
+  const rawEnd = re.end_time ? re.end_time.slice(0, 10) : (re.endDate || date);
+  const endDate = rawEnd && rawEnd >= date ? rawEnd : date;
+  return {
+    id: re.id,
+    title: re.title,
+    date: date,
+    endDate: endDate,
+    time: re.time !== undefined ? re.time : (re.start_time ? re.start_time.slice(11, 16) : ''),
+    owner: owner,
+    repeat: repeat,
+    color: re.color || OWNER_COLORS[owner] || OWNER_COLORS.both
+  };
+}
+
+function eventMatchesDate(ev, dateStr) {
+  if (!ev || !ev.date) return false;
+  const end = ev.endDate && ev.endDate >= ev.date ? ev.endDate : ev.date;
+  if (dateStr >= ev.date && dateStr <= end) return true;
+  if (dateStr < ev.date) return false;
+  if (ev.repeat === 'monthly') {
+    return dateStr.slice(8, 10) === ev.date.slice(8, 10);
+  }
+  if (ev.repeat === 'yearly') {
+    return dateStr.slice(5, 10) === ev.date.slice(5, 10);
+  }
+  return false;
+}
+
+function nextOccurrenceOnOrAfter(ev, todayStr) {
+  const end = ev.endDate && ev.endDate >= ev.date ? ev.endDate : ev.date;
+  if (end >= todayStr) {
+    return ev.date >= todayStr ? ev.date : todayStr;
+  }
+  const tp = todayStr.split('-').map(Number);
+  const ep = ev.date.split('-').map(Number);
+  if (ev.repeat === 'monthly') {
+    let y = tp[0], m = tp[1];
+    const day = ep[2];
+    const candidate = y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    if (candidate >= todayStr) return candidate;
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+    return y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
+  if (ev.repeat === 'yearly') {
+    let y = tp[0];
+    const mmdd = ev.date.slice(5, 10);
+    const candidate = y + '-' + mmdd;
+    if (candidate >= todayStr) return candidate;
+    return (y + 1) + '-' + mmdd;
+  }
+  return null;
+}
+
+function eventMetaBadge(ev) {
+  const badges = [];
+  if (ev.repeat === 'monthly') badges.push('🔁 매달');
+  else if (ev.repeat === 'yearly') badges.push('🎂 매년');
+  if (ev.endDate && ev.endDate > ev.date) {
+    const s = ev.date.split('-').map(Number);
+    const e = ev.endDate.split('-').map(Number);
+    badges.push(s[1] + '/' + s[2] + '~' + e[1] + '/' + e[2]);
+  }
+  return badges.length ? ' · ' + badges.join(' · ') : '';
+}
+
+function updateRepeatButtons() {
+  document.querySelectorAll('.repeat-preset-btn').forEach(function(btn) {
+    const on = btn.dataset.repeat === (state.selectedRepeat || 'none');
+    btn.classList.toggle('bg-theme-primary', on);
+    btn.classList.toggle('text-white', on);
+    btn.classList.toggle('bg-white', !on);
+    btn.classList.toggle('text-slate-600', !on);
+  });
+}
 
 // 누구 약속인지 색깔
 const OWNER_COLORS = { husband: '#3B82F6', wife: '#EC4899', both: '#8B5CF6' };
@@ -463,18 +530,26 @@ function relativeDayLabel(dateStr) {
 
 function upcomingEvents() {
   const todayStr = formatDate(new Date());
-  return state.events
-    .filter(function(e) { return e.date >= todayStr; })
-    .sort(function(a, b) { return (a.date + (a.time || '00:00')).localeCompare(b.date + (b.time || '00:00')); });
+  const results = [];
+  state.events.forEach(function(ev) {
+    const nextDate = nextOccurrenceOnOrAfter(ev, todayStr);
+    if (nextDate) {
+      results.push(Object.assign({}, ev, { displayDate: nextDate }));
+    }
+  });
+  return results.sort(function(a, b) {
+    return ((a.displayDate || a.date) + (a.time || '00:00')).localeCompare((b.displayDate || b.date) + (b.time || '00:00'));
+  });
 }
 
 function upcomingRowHtml(ev) {
   const color = eventColor(ev);
-  return '<button type="button" class="w-full flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 hover:bg-slate-100 text-left transition" onclick="openDayFromList(\'' + ev.date + '\')">'
-    + '<span class="w-[64px] flex-shrink-0 text-xs font-extrabold" style="color:' + color + '">' + relativeDayLabel(ev.date) + '</span>'
+  const targetDate = ev.displayDate || ev.date;
+  return '<button type="button" class="w-full flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 hover:bg-slate-100 text-left transition" onclick="openDayFromList(\'' + targetDate + '\')">'
+    + '<span class="w-[64px] flex-shrink-0 text-xs font-extrabold" style="color:' + color + '">' + relativeDayLabel(targetDate) + '</span>'
     + '<span class="w-1.5 h-8 rounded-full flex-shrink-0" style="background-color:' + color + '"></span>'
     + '<span class="flex-1 min-w-0"><span class="block text-sm font-bold text-slate-800 truncate">' + escapeHtml(ev.title) + '</span>'
-    + '<span class="block text-xs text-slate-500">' + timeLabel(ev.time) + ' · ' + escapeHtml(ownerLabel(ev.owner)) + '</span></span>'
+    + '<span class="block text-xs text-slate-500">' + timeLabel(ev.time) + ' · ' + escapeHtml(ownerLabel(ev.owner)) + escapeHtml(eventMetaBadge(ev)) + '</span></span>'
     + '<i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>'
     + '</button>';
 }
@@ -502,6 +577,7 @@ function upcomingGroupLabel(dateStr) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const diff = Math.round((new Date(p[0], p[1] - 1, p[2]) - today) / 86400000);
+  if (diff < 0) return '지난 약속';
   const daysToSaturday = 6 - today.getDay();
   if (diff <= daysToSaturday) return '이번 주';
   if (diff <= daysToSaturday + 7) return '다음 주';
@@ -510,6 +586,7 @@ function upcomingGroupLabel(dateStr) {
 
 function renderUpcomingSheet() {
   const f = state.upcomingFilter;
+  const q = (state.eventSearch || '').trim().toLowerCase();
   const names = { all: '전체', husband: state.husbandName, wife: state.wifeName, both: '우리 둘' };
   document.querySelectorAll('.up-filter-btn').forEach(function(b) {
     const key = b.dataset.upFilter;
@@ -518,15 +595,20 @@ function renderUpcomingSheet() {
     b.style.backgroundColor = on ? (key === 'all' ? 'var(--theme-primary)' : OWNER_COLORS[key]) : '#F1F5F9';
     b.style.color = on ? '#FFFFFF' : '#475569';
   });
-  const list = upcomingEvents().filter(function(e) { return f === 'all' || (e.owner || 'both') === f; });
+  const baseList = q
+    ? state.events.filter(function(e) { return (e.title || '').toLowerCase().includes(q); })
+        .map(function(e) { return Object.assign({}, e, { displayDate: e.date }); })
+        .sort(function(a, b) { return (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')); })
+    : upcomingEvents();
+  const list = baseList.filter(function(e) { return f === 'all' || (e.owner || 'both') === f; });
   const box = document.getElementById('upcomingSheetList');
   if (list.length === 0) {
-    box.innerHTML = '<div class="py-8 text-center text-sm text-slate-400">해당하는 약속이 없어요.</div>';
+    box.innerHTML = '<div class="py-8 text-center text-sm text-slate-400">' + (q ? '찾으시는 약속이 없어요.' : '해당하는 약속이 없어요.') + '</div>';
     return;
   }
   const groups = [];
   list.forEach(function(ev) {
-    const label = upcomingGroupLabel(ev.date);
+    const label = upcomingGroupLabel(ev.displayDate || ev.date);
     let g = groups[groups.length - 1];
     if (!g || g.label !== label) {
       g = { label: label, items: [] };
@@ -567,7 +649,10 @@ window.editEvent = function(id) {
   state.editingId = id;
   inputItemTitle.value = ev.title;
   inputItemDate.value = ev.date;
+  document.getElementById('inputItemEndDate').value = ev.endDate || ev.date;
   state.selectedOwner = ev.owner || 'both';
+  state.selectedRepeat = ev.repeat || 'none';
+  updateRepeatButtons();
   if (!ev.time) {
     state.selectedTime = 'allday';
   } else if (['09:00', '12:00', '19:00'].indexOf(ev.time) >= 0) {
@@ -721,7 +806,9 @@ let state = {
   selectedTime: '19:00',
   lastSwipe: 0,
   editingId: null,
-  upcomingFilter: 'all'
+  upcomingFilter: 'all',
+  selectedRepeat: 'none',
+  eventSearch: ''
 };
 
 // 샘플 데이터
@@ -993,7 +1080,7 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
   const isSaturday = (dayOfWeek === 6);
 
   const dayEvents = state.events
-    .filter(e => e.date === dateStr)
+    .filter(e => eventMatchesDate(e, dateStr))
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   const dayDiaries = state.diaries.filter(d => d.date === dateStr);
 
@@ -1084,7 +1171,7 @@ function renderSelectedDateView() {
   const holidayText = holidayName ? ` (${holidayName})` : '';
   selectedDateTitle.textContent = `${parseInt(parts[1])}월 ${parseInt(parts[2])}일${holidayText}`;
 
-  const dayEvents = state.events.filter(e => e.date === state.selectedDate);
+  const dayEvents = state.events.filter(e => eventMatchesDate(e, state.selectedDate));
   const dayDiaries = state.diaries.filter(d => d.date === state.selectedDate);
 
   const sp = state.selectedDate.split('-').map(Number);
@@ -1109,7 +1196,7 @@ function renderSelectedDateEventsList(events) {
       + '<button type="button" class="edit-event-btn flex items-center gap-2.5 min-w-0 flex-1 text-left p-1.5 rounded-lg hover:bg-white transition" onclick="editEvent(\'' + ev.id + '\')">'
       + '<span class="w-1.5 h-9 rounded-full flex-shrink-0" style="background-color:' + color + '"></span>'
       + '<span class="min-w-0"><span class="block text-sm font-bold text-slate-800 truncate">' + escapeHtml(ev.title) + ' <i class="fa-solid fa-pen text-[10px] text-slate-300"></i></span>'
-      + '<span class="block text-xs text-slate-500 font-medium">' + timeLabel(ev.time) + ' · <b style="color:' + color + '">' + escapeHtml(ownerLabel(ev.owner)) + '</b></span></span>'
+      + '<span class="block text-xs text-slate-500 font-medium">' + timeLabel(ev.time) + ' · <b style="color:' + color + '">' + escapeHtml(ownerLabel(ev.owner)) + '</b>' + escapeHtml(eventMetaBadge(ev)) + '</span></span>'
       + '</button>'
       + '<button class="w-10 h-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 flex-shrink-0" onclick="deleteEvent(\'' + ev.id + '\')" aria-label="지우기"><i class="fa-solid fa-trash-can"></i></button>'
       + '</div>';
@@ -1289,12 +1376,15 @@ function renderTodos() {
 
 window.clearCompletedTodos = function() {
   const before = state.todos.slice();
+  const removedList = state.todos.filter(function(t) { return t.isCompleted; });
   state.todos = state.todos.filter(function(t) { return !t.isCompleted; });
   saveTodos();
+  removedList.forEach(function(t) { pushRemoteTodo('delete', t); });
   renderTodos();
   showToast('끝낸 일을 모두 지웠어요', function() {
     state.todos = before;
     saveTodos();
+    removedList.forEach(function(t) { pushRemoteTodo('insert', t); });
     renderTodos();
   });
 };
@@ -1318,6 +1408,24 @@ function setupEventListeners() {
     goToDate(formatDate(new Date()));
   });
 
+  document.getElementById('btnOpenEventSearch').addEventListener('click', function() {
+    openUpcomingSheet();
+    setTimeout(function() { document.getElementById('eventSearchInput').focus(); }, 60);
+  });
+  document.getElementById('eventSearchInput').addEventListener('input', function(e) {
+    state.eventSearch = e.target.value;
+    renderUpcomingSheet();
+  });
+  document.querySelectorAll('.repeat-preset-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      state.selectedRepeat = btn.dataset.repeat;
+      updateRepeatButtons();
+    });
+  });
+  inputItemDate.addEventListener('change', function() {
+    const endEl = document.getElementById('inputItemEndDate');
+    if (!endEl.value || endEl.value < inputItemDate.value) endEl.value = inputItemDate.value;
+  });
   document.getElementById('btnShowAllUpcoming').addEventListener('click', openUpcomingSheet);
   document.getElementById('btnCloseUpcomingSheet').addEventListener('click', closeUpcomingSheet);
   document.getElementById('upcomingSheet').addEventListener('click', function(e) {
@@ -1392,8 +1500,10 @@ function setupEventListeners() {
     const input = document.getElementById('todoQuickInput');
     const title = input.value.trim();
     if (!title) return;
-    state.todos.push({ id: Date.now().toString(), title: title, isCompleted: false, dueDate: formatDate(new Date()) });
+    const newTodo = { id: Date.now().toString(), title: title, isCompleted: false, dueDate: formatDate(new Date()) };
+    state.todos.push(newTodo);
     saveTodos();
+    pushRemoteTodo('insert', newTodo);
     renderTodos();
     input.value = '';
     input.focus();
@@ -1618,7 +1728,9 @@ function setupEventListeners() {
       let timeVal = state.selectedTime;
       if (timeVal === 'allday') timeVal = '';
       else if (timeVal === 'custom') timeVal = inputItemTime.value || '';
-      const data = { title: textVal, date: dateVal, time: timeVal, owner: state.selectedOwner, color: OWNER_COLORS[state.selectedOwner] };
+      const rawEnd = document.getElementById('inputItemEndDate').value || dateVal;
+      const endDateVal = rawEnd >= dateVal ? rawEnd : dateVal;
+      const data = { title: textVal, date: dateVal, endDate: endDateVal, time: timeVal, owner: state.selectedOwner, repeat: state.selectedRepeat || 'none', color: OWNER_COLORS[state.selectedOwner] };
       const existing = editing ? state.events.find(function(e) { return e.id === editing; }) : null;
       if (existing) Object.assign(existing, data);
       else state.events.push(Object.assign({ id: Date.now().toString() }, data));
@@ -1715,6 +1827,9 @@ function switchTab(targetId) {
 function openModalWithMode(mode) {
   state.editingId = null;
   inputItemDate.value = state.selectedDate;
+  document.getElementById('inputItemEndDate').value = state.selectedDate;
+  state.selectedRepeat = 'none';
+  updateRepeatButtons();
   inputItemTitle.value = '';
   state.tempMediaFiles = [];
   state.selectedOwner = 'both';
@@ -1744,6 +1859,8 @@ function setModalMode(mode) {
   inputItemTitle.rows = mode === 'diary' ? 4 : 2;
   document.getElementById('ownerSelectorWrap').classList.toggle('hidden', mode !== 'event');
   document.getElementById('dateFieldWrap').classList.toggle('hidden', mode === 'todo');
+  document.getElementById('endDateWrap').classList.toggle('hidden', mode !== 'event');
+  document.getElementById('repeatFieldWrap').classList.toggle('hidden', mode !== 'event');
   timeFieldWrap.classList.toggle('hidden', mode !== 'event');
   moodSelectorWrap.classList.toggle('hidden', mode !== 'diary');
   mediaUploadWrap.classList.toggle('hidden', mode !== 'diary');
@@ -1760,6 +1877,7 @@ window.deleteEvent = function(id) {
   showToast('약속을 지웠어요', function() {
     restoreAt(state.events, idx, removed);
     saveEvents();
+    pushRemoteEvent('insert', removed);
     renderCalendar();
     renderSelectedDateView();
   });
@@ -1770,6 +1888,7 @@ window.toggleTodo = function(id) {
   if (!todo) return;
   todo.isCompleted = !todo.isCompleted;
   saveTodos();
+  pushRemoteTodo('update', todo);
   renderTodos();
   if (todo.isCompleted) showToast('잘했어요! ✅');
 };
@@ -1784,6 +1903,7 @@ window.deleteTodo = function(id) {
   showToast('할 일을 지웠어요', function() {
     restoreAt(state.todos, idx, removed);
     saveTodos();
+    pushRemoteTodo('insert', removed);
     renderTodos();
   });
 };
@@ -1800,6 +1920,7 @@ window.deleteDiary = function(id) {
   showToast('일기를 지웠어요', function() {
     restoreAt(state.diaries, idx, removed);
     saveDiaries();
+    pushRemoteDiary('insert', removed);
     renderCalendar();
     renderSelectedDateView();
     renderAllDiaries();
