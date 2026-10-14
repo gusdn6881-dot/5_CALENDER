@@ -1,4 +1,4 @@
-const CACHE_NAME = 'couple-cal-v6';
+const CACHE_NAME = 'couple-cal-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -31,4 +31,5 @@ self.addEventListener('fetch', (e) => {
     fetch(e.request).catch(() => caches.match(e.request))
   );
 });
+
 
