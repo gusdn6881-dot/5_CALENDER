@@ -1,6 +1,6 @@
 {
-  "name": "우리의 캘린더 - 부부 공유 캘린더",
-  "short_name": "우리캘린더",
+  "name": "우리하루 - 부부 공유 캘린더",
+  "short_name": "우리하루",
   "description": "부부 전용 실시간 공유 캘린더 & 할 일",
   "start_url": "./index.html",
   "display": "standalone",
@@ -8,6 +8,11 @@
   "theme_color": "#3B82F6",
   "orientation": "portrait",
   "icons": [
+    {
+      "src": "./icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
     {
       "src": "./icons/icon-192.png",
       "sizes": "192x192",

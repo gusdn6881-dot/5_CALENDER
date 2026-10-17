@@ -1,9 +1,12 @@
-const CACHE_NAME = 'couple-cal-v10';
+const CACHE_NAME = 'couple-cal-v11';
 const ASSETS = [
   './',
   './index.html',
   './app.js',
-  './manifest.json'
+  './manifest.json',
+  './icons/apple-touch-icon.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -31,5 +34,4 @@ self.addEventListener('fetch', (e) => {
     fetch(e.request).catch(() => caches.match(e.request))
   );
 });
-
 
