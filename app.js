@@ -295,7 +295,7 @@ const THEMES = {
   forest: { primary: '#059669', secondary: '#10B981', bg: '#F0FDF4', card: 'rgba(255, 255, 255, 0.94)', text: '#0F172A' },
   sunset: { primary: '#D97706', secondary: '#F59E0B', bg: '#FFFBEB', card: 'rgba(255, 255, 255, 0.94)', text: '#1C1917' },
   violet: { primary: '#7C3AED', secondary: '#EC4899', bg: '#FAF5FF', card: 'rgba(255, 255, 255, 0.94)', text: '#1E1B4B' },
-  dark: { primary: '#1E293B', secondary: '#F43F5E', bg: '#F1F5F9', card: 'rgba(255, 255, 255, 0.94)', text: '#0F172A' }
+  dark: { primary: '#6366F1', secondary: '#F43F5E', bg: '#0F172A', card: 'rgba(30, 41, 59, 0.95)', text: '#F8FAFC', isDark: true }
 };
 
 function parseRemoteEvent(re) {
@@ -467,7 +467,9 @@ function renderLegend() {
     const key = p[0], label = p[1], dotColor = p[2];
     const active = cur === key;
     const activeBg = dotColor || 'var(--theme-primary)';
-    const style = active ? ('background:' + activeBg + ';color:#FFFFFF;border-color:' + activeBg) : 'background:#F8FAFC;color:#475569;border-color:#E2E8F0';
+    const isDark = document.body.classList.contains('theme-dark');
+    const inactiveStyle = isDark ? 'background:#0F172A;color:#CBD5E1;border-color:#334155' : 'background:#F8FAFC;color:#475569;border-color:#E2E8F0';
+    const style = active ? ('background:' + activeBg + ';color:#FFFFFF;border-color:' + activeBg) : inactiveStyle;
     const dotHtml = dotColor ? ('<span class="w-2 h-2 rounded-full" style="background:' + (active ? '#FFFFFF' : dotColor) + '"></span>') : '';
     return '<button type="button" onclick="setCalendarOwnerFilter(\'' + key + '\')" class="cal-owner-chip flex items-center justify-center gap-1 py-1.5 rounded-xl border transition active:scale-95 whitespace-nowrap" data-cal-owner="' + key + '" style="' + style + '">' + dotHtml + escapeHtml(label) + '</button>';
   }).join('');
@@ -479,9 +481,10 @@ function updateOwnerButtons() {
   document.querySelectorAll('.owner-btn').forEach(function(btn) {
     const c = OWNER_COLORS[btn.dataset.owner];
     const on = btn.dataset.owner === state.selectedOwner;
-    btn.style.borderColor = on ? c : '#E2E8F0';
-    btn.style.backgroundColor = on ? c + '1A' : '#FFFFFF';
-    btn.style.color = on ? c : '#475569';
+    const isDark = document.body.classList.contains('theme-dark');
+    btn.style.borderColor = on ? c : (isDark ? '#334155' : '#E2E8F0');
+    btn.style.backgroundColor = on ? c + '28' : (isDark ? '#0F172A' : '#FFFFFF');
+    btn.style.color = on ? c : (isDark ? '#CBD5E1' : '#475569');
   });
 }
 
@@ -617,8 +620,9 @@ function renderUpcomingSheet() {
     const key = b.dataset.upFilter;
     const on = key === f;
     b.textContent = names[key];
-    b.style.backgroundColor = on ? (key === 'all' ? 'var(--theme-primary)' : OWNER_COLORS[key]) : '#F1F5F9';
-    b.style.color = on ? '#FFFFFF' : '#475569';
+    const isDark = document.body.classList.contains('theme-dark');
+    b.style.backgroundColor = on ? (key === 'all' ? 'var(--theme-primary)' : OWNER_COLORS[key]) : (isDark ? '#0F172A' : '#F1F5F9');
+    b.style.color = on ? '#FFFFFF' : (isDark ? '#CBD5E1' : '#475569');
   });
   const baseList = q
     ? state.events.filter(function(e) { return (e.title || '').toLowerCase().includes(q); })
@@ -935,6 +939,7 @@ const tabs = {
 
 function applyTheme(themeConfig, isCustom = false) {
   const root = document.documentElement;
+  document.body.classList.toggle('theme-dark', !!themeConfig.isDark);
   root.style.setProperty('--theme-primary', themeConfig.primary);
   root.style.setProperty('--theme-secondary', themeConfig.secondary || '#F43F5E');
   root.style.setProperty('--theme-bg', themeConfig.bg || '#F8FAFC');
@@ -978,6 +983,8 @@ function selectPresetTheme(themeId) {
   localStorage.setItem('cal_theme_id', themeId);
   localStorage.setItem('cal_custom_color', theme.primary);
   applyTheme(theme, false);
+  renderLegend();
+  updateOwnerButtons();
   renderCalendar();
 }
 
@@ -1848,6 +1855,7 @@ function switchTab(targetId) {
 
   Object.values(tabs).forEach(t => t.classList.add('hidden'));
   tabs[targetId].classList.remove('hidden');
+  btnOpenAddModal.classList.toggle('hidden', targetId === 'tabSettings');
 }
 
 function openModalWithMode(mode) {
