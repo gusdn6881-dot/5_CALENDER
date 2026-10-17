@@ -1,4 +1,4 @@
-const CACHE_NAME = 'couple-cal-v8';
+const CACHE_NAME = 'couple-cal-v9';
 const ASSETS = [
   './',
   './index.html',
