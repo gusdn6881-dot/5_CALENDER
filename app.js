@@ -442,10 +442,34 @@ function setSubTab(name) {
   state.currentSubTab = name;
 }
 
+function eventMatchesOwnerFilter(ev) {
+  const f = state.calendarOwnerFilter || 'all';
+  if (f === 'all') return true;
+  return (ev.owner || 'both') === f;
+}
+
+window.setCalendarOwnerFilter = function(key) {
+  if (key !== 'all' && state.calendarOwnerFilter === key) {
+    state.calendarOwnerFilter = 'all';
+  } else {
+    state.calendarOwnerFilter = key;
+  }
+  state.upcomingFilter = state.calendarOwnerFilter;
+  renderLegend();
+  renderCalendar();
+  renderSelectedDateView();
+};
+
 function renderLegend() {
-  const items = [['husband', state.husbandName], ['wife', state.wifeName], ['both', '우리 둘']];
+  const cur = state.calendarOwnerFilter || 'all';
+  const items = [['all', '전체', null], ['husband', state.husbandName, OWNER_COLORS.husband], ['wife', state.wifeName, OWNER_COLORS.wife], ['both', '우리 둘', OWNER_COLORS.both]];
   document.getElementById('calendarLegend').innerHTML = items.map(function(p) {
-    return '<span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full" style="background:' + OWNER_COLORS[p[0]] + '"></span>' + escapeHtml(p[1]) + '</span>';
+    const key = p[0], label = p[1], dotColor = p[2];
+    const active = cur === key;
+    const activeBg = dotColor || 'var(--theme-primary)';
+    const style = active ? ('background:' + activeBg + ';color:#FFFFFF;border-color:' + activeBg) : 'background:#F8FAFC;color:#475569;border-color:#E2E8F0';
+    const dotHtml = dotColor ? ('<span class="w-2 h-2 rounded-full" style="background:' + (active ? '#FFFFFF' : dotColor) + '"></span>') : '';
+    return '<button type="button" onclick="setCalendarOwnerFilter(\'' + key + '\')" class="cal-owner-chip flex items-center justify-center gap-1 py-1.5 rounded-xl border transition active:scale-95 whitespace-nowrap" data-cal-owner="' + key + '" style="' + style + '">' + dotHtml + escapeHtml(label) + '</button>';
   }).join('');
 }
 
@@ -532,6 +556,7 @@ function upcomingEvents() {
   const todayStr = formatDate(new Date());
   const results = [];
   state.events.forEach(function(ev) {
+    if (!eventMatchesOwnerFilter(ev)) return;
     const nextDate = nextOccurrenceOnOrAfter(ev, todayStr);
     if (nextDate) {
       results.push(Object.assign({}, ev, { displayDate: nextDate }));
@@ -807,6 +832,7 @@ let state = {
   lastSwipe: 0,
   editingId: null,
   upcomingFilter: 'all',
+  calendarOwnerFilter: 'all',
   selectedRepeat: 'none',
   eventSearch: ''
 };
@@ -1080,7 +1106,7 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
   const isSaturday = (dayOfWeek === 6);
 
   const dayEvents = state.events
-    .filter(e => eventMatchesDate(e, dateStr))
+    .filter(e => eventMatchesDate(e, dateStr) && eventMatchesOwnerFilter(e))
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   const dayDiaries = state.diaries.filter(d => d.date === dateStr);
 
@@ -1171,7 +1197,7 @@ function renderSelectedDateView() {
   const holidayText = holidayName ? ` (${holidayName})` : '';
   selectedDateTitle.textContent = `${parseInt(parts[1])}월 ${parseInt(parts[2])}일${holidayText}`;
 
-  const dayEvents = state.events.filter(e => eventMatchesDate(e, state.selectedDate));
+  const dayEvents = state.events.filter(e => eventMatchesDate(e, state.selectedDate) && eventMatchesOwnerFilter(e));
   const dayDiaries = state.diaries.filter(d => d.date === state.selectedDate);
 
   const sp = state.selectedDate.split('-').map(Number);
