@@ -75,6 +75,95 @@
 
     .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.4); border-radius: 9999px; }
+/* 플로팅 + 버튼: 아이폰 Safe Area 및 하단 탭바 위로 여유 있게 배치 */
+    #btnOpenAddModal {
+      bottom: calc(4.75rem + max(env(safe-area-inset-bottom), 14px));
+    }
+
+    /* 🌙 다크 테마 (캘린더, 카드, 탭바, 모달 전체 다크모드) */
+    body.theme-dark header,
+    body.theme-dark nav {
+      background-color: rgba(15, 23, 42, 0.94) !important;
+      border-color: rgba(51, 65, 85, 0.85) !important;
+    }
+    body.theme-dark .card-theme {
+      background-color: rgba(30, 41, 59, 0.95) !important;
+      border-color: rgba(51, 65, 85, 0.85) !important;
+      color: #F8FAFC !important;
+    }
+    body.theme-dark #daySheet > div,
+    body.theme-dark #upcomingSheet > div,
+    body.theme-dark #chooserModal > div,
+    body.theme-dark #addModal > div,
+    body.theme-dark #diaryDetailModal > div {
+      background-color: #1E293B !important;
+      color: #F8FAFC !important;
+      border: 1px solid #334155;
+    }
+    body.theme-dark .text-slate-900,
+    body.theme-dark .text-slate-800,
+    body.theme-dark .text-slate-700 {
+      color: #F1F5F9 !important;
+    }
+    body.theme-dark .text-slate-600,
+    body.theme-dark .text-slate-500 {
+      color: #CBD5E1 !important;
+    }
+    body.theme-dark .text-slate-400 {
+      color: #94A3B8 !important;
+    }
+    body.theme-dark .text-slate-300 {
+      color: #475569 !important;
+    }
+    body.theme-dark .text-rose-600,
+    body.theme-dark .text-rose-500 {
+      color: #FB7185 !important;
+    }
+    body.theme-dark .text-blue-600,
+    body.theme-dark .text-blue-500 {
+      color: #60A5FA !important;
+    }
+    body.theme-dark .bg-white,
+    body.theme-dark .bg-white\/85,
+    body.theme-dark .bg-white\/95,
+    body.theme-dark .bg-slate-50,
+    body.theme-dark .bg-slate-50\/80 {
+      background-color: #0F172A !important;
+      border-color: #334155 !important;
+      color: #F1F5F9 !important;
+    }
+    body.theme-dark .bg-slate-100,
+    body.theme-dark .bg-slate-100\/90 {
+      background-color: #334155 !important;
+      color: #F1F5F9 !important;
+    }
+    body.theme-dark .bg-indigo-50,
+    body.theme-dark .bg-emerald-50,
+    body.theme-dark .bg-rose-50,
+    body.theme-dark .bg-rose-50\/40,
+    body.theme-dark .bg-rose-50\/50 {
+      background-color: rgba(51, 65, 85, 0.65) !important;
+      border-color: #475569 !important;
+    }
+    body.theme-dark .border-b,
+    body.theme-dark .border-t,
+    body.theme-dark .border-slate-100,
+    body.theme-dark .border-slate-200,
+    body.theme-dark .border-slate-200\/70,
+    body.theme-dark .border-slate-200\/80 {
+      border-color: #334155 !important;
+    }
+    body.theme-dark input,
+    body.theme-dark textarea {
+      background-color: #0F172A !important;
+      border-color: #334155 !important;
+      color: #F8FAFC !important;
+      color-scheme: dark;
+    }
+    body.theme-dark .hover\:bg-slate-100:hover {
+      background-color: rgba(51, 65, 85, 0.6) !important;
+    }
+
   </style>
 </head>
 <body class="font-sans antialiased min-h-screen flex flex-col">
@@ -96,7 +185,7 @@
     </div>
   </header>
 
-  <main class="flex-1 overflow-y-auto px-4 py-3 pb-28 space-y-3 max-w-md mx-auto w-full">
+  <main class="flex-1 overflow-y-auto px-4 py-3 pb-36 space-y-3 max-w-md mx-auto w-full">
 
     <!-- 캘린더 -->
     <div id="tabCalendar" class="space-y-3">
@@ -296,7 +385,7 @@
 
   </main>
 
-  <button id="btnOpenAddModal" class="fixed right-5 bottom-20 z-30 w-16 h-16 rounded-full bg-theme-primary text-white shadow-lg flex items-center justify-center text-3xl hover:scale-105 active:scale-95 transition-transform" aria-label="추가하기">
+  <button id="btnOpenAddModal" class="fixed right-5 z-30 w-14 h-14 rounded-full bg-theme-primary text-white shadow-lg flex items-center justify-center text-3xl hover:scale-105 active:scale-95 transition-transform" aria-label="추가하기">
     <i class="fa-solid fa-plus"></i>
   </button>
 
