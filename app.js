@@ -1045,8 +1045,9 @@ function updateDDayBadge() {
   if (!state.anniversaryDate) return;
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(state.anniversaryDate);
-  const diffDays = Math.floor((today - target) / (1000 * 60 * 60 * 24));
+  const parts = String(state.anniversaryDate).split('-').map(Number);
+  const target = parts.length === 3 ? new Date(parts[0], parts[1] - 1, parts[2]) : new Date(state.anniversaryDate);
+  const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) {
     ddayBadge.textContent = '오늘 결혼기념일 D-Day!';
@@ -1511,6 +1512,25 @@ function setupEventListeners() {
       supabaseClient = null;
       updateSupabaseBadge('offline', '⚪ 로컬 저장 모드', 'bg-slate-100 text-slate-500');
       showToast('실시간 연결을 해제했어요');
+    });
+  }
+  const btnCopyLink = document.getElementById('btnCopyCoupleLink');
+  if (btnCopyLink) {
+    btnCopyLink.addEventListener('click', async function() {
+      const u = (document.getElementById('inputSupabaseUrl').value || state.supabaseUrl || '').trim();
+      const k = (document.getElementById('inputSupabaseKey').value || state.supabaseKey || '').trim();
+      if (!u || !k) {
+        showToast('먼저 Project URL과 Key를 입력해 연결해 주세요 ✏️');
+        return;
+      }
+      const baseUrl = window.location.origin + window.location.pathname;
+      const shareUrl = baseUrl + '?sb_url=' + encodeURIComponent(u) + '&sb_key=' + encodeURIComponent(k);
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast('부부 전용 연결 링크를 복사했어요! 카톡으로 보내주세요 💌');
+      } catch (err) {
+        showToast('링크: ' + shareUrl);
+      }
     });
   }
   document.getElementById('btnExportBackup').addEventListener('click', exportBackup);
