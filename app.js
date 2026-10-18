@@ -1002,8 +1002,12 @@ function selectCustomColor(hex) {
 // ==============================================================================
 // 🚀 앱 초기화
 // ==============================================================================
+let isAppInitialized = false;
 
 function init() {
+  if (isAppInitialized) return;
+  if (!document.getElementById('calendarDaysGrid')) return;
+  isAppInitialized = true;
   if (state.currentThemeId === 'custom' || !THEMES[state.currentThemeId]) {
     selectCustomColor(state.customPrimaryColor);
   } else {
@@ -2000,5 +2004,6 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+init();
 document.addEventListener('DOMContentLoaded', init);
 
