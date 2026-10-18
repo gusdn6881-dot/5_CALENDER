@@ -599,4 +599,203 @@
         <label class="block text-sm font-bold text-slate-600 mb-1.5">오늘 기분은?</label>
         <div class="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200/80">
           <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition ring-2 ring-indigo-500" data-mood="🥰">🥰</button>
-          <button class="m
+          <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition" data-mood="😊">😊</button>
+          <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition" data-mood="☕">☕</button>
+          <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition" data-mood="🍽️">🍽️</button>
+          <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition" data-mood="🎉">🎉</button>
+          <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition" data-mood="😴">😴</button>
+          <button class="mood-btn text-2xl p-1 rounded-lg hover:bg-white transition" data-mood="😢">😢</button>
+        </div>
+      </div>
+
+      <div>
+        <label id="inputItemLabel" class="block text-sm font-bold text-slate-600 mb-1.5">무슨 약속이에요?</label>
+        <textarea id="inputItemTitle" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-base focus:outline-none focus:ring-2 ring-theme-primary resize-none"></textarea>
+      </div>
+
+      <div id="ownerSelectorWrap" class="hidden">
+        <label class="block text-sm font-bold text-slate-600 mb-1.5">누구 약속이에요?</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button class="owner-btn py-2.5 rounded-xl border-2 text-sm font-bold flex flex-col items-center gap-0.5 transition" data-owner="husband"><span class="text-xl">🙋‍♂️</span><span id="ownerNameHusband">강현우</span></button>
+          <button class="owner-btn py-2.5 rounded-xl border-2 text-sm font-bold flex flex-col items-center gap-0.5 transition" data-owner="wife"><span class="text-xl">🙋‍♀️</span><span id="ownerNameWife">김시문</span></button>
+          <button class="owner-btn py-2.5 rounded-xl border-2 text-sm font-bold flex flex-col items-center gap-0.5 transition" data-owner="both"><span class="text-xl">💑</span><span>우리 둘</span></button>
+        </div>
+      </div>
+
+      <div id="dateFieldWrap" class="space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-sm font-bold text-slate-600 mb-1">시작 날짜</label>
+            <input type="date" id="inputItemDate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-sm">
+          </div>
+          <div id="endDateWrap">
+            <label class="block text-sm font-bold text-slate-600 mb-1">종료 날짜 <span class="text-[11px] font-normal text-slate-400">(여행 등)</span></label>
+            <input type="date" id="inputItemEndDate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-sm">
+          </div>
+        </div>
+      </div>
+
+      <div id="repeatFieldWrap" class="hidden">
+        <label class="block text-sm font-bold text-slate-600 mb-1.5">반복할까요?</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" class="repeat-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-repeat="none">한 번만</button>
+          <button type="button" class="repeat-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-repeat="monthly">🔁 매달 반복</button>
+          <button type="button" class="repeat-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-repeat="yearly">🎂 매년 반복</button>
+        </div>
+      </div>
+
+      <div id="timeFieldWrap" class="hidden">
+        <label class="block text-sm font-bold text-slate-600 mb-1.5">몇 시예요?</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button class="time-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-time="09:00">🌅 아침</button>
+          <button class="time-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-time="12:00">🍚 점심</button>
+          <button class="time-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-time="19:00">🌙 저녁</button>
+          <button class="time-preset-btn py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-time="allday">☀️ 하루 종일</button>
+          <button class="time-preset-btn col-span-2 py-2 rounded-xl border border-slate-200 text-sm font-bold transition" data-time="custom">⏰ 시간 직접 고르기</button>
+        </div>
+        <input type="time" id="inputItemTime" value="19:00" class="hidden mt-2 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-base">
+      </div>
+
+      <div id="mediaUploadWrap" class="hidden space-y-2">
+        <label class="block text-sm font-bold text-slate-600">사진·동영상 넣기</label>
+        <div class="flex items-center gap-2">
+          <label for="inputMediaFiles" class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-photo-film text-indigo-600"></i> 사진 고르기
+          </label>
+          <input type="file" id="inputMediaFiles" accept="image/*,video/*" multiple class="hidden">
+          <span id="mediaCountText" class="text-xs text-slate-400 font-medium">아직 없어요</span>
+        </div>
+        <div id="mediaPreviewGrid" class="flex gap-2 overflow-x-auto py-1"></div>
+      </div>
+
+      <button id="btnSubmitItem" class="w-full bg-theme-primary text-white font-extrabold py-3.5 rounded-xl text-base shadow-md hover:opacity-90 transition">저장하기</button>
+    </div>
+  </div>
+
+  <!-- 일기 크게 보기 -->
+  <div id="diaryDetailModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-3 safe-bottom animate-slide-up max-h-[88vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center gap-2">
+          <span id="diaryDetailMood" class="text-2xl"></span>
+          <div>
+            <h3 id="diaryDetailDate" class="text-sm font-bold text-slate-800"></h3>
+            <span id="diaryDetailTime" class="text-[11px] text-slate-400"></span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="btnDiaryDetailEdit" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-theme-primary hover:bg-slate-100" aria-label="고치기"><i class="fa-solid fa-pen"></i></button>
+          <button id="btnDiaryDetailDelete" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50" aria-label="지우기"><i class="fa-solid fa-trash-can"></i></button>
+          <button id="btnDiaryDetailClose" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 text-lg" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <p id="diaryDetailContent" class="text-base text-slate-800 leading-relaxed whitespace-pre-wrap"></p>
+      <div id="diaryDetailMedia"></div>
+    </div>
+  </div>
+
+  <!-- 사진 크게 보기 -->
+  <div id="photoViewer" class="fixed inset-0 z-[70] bg-black/90 hidden items-center justify-center p-4" onclick="closePhotoViewer()">
+    <img id="photoViewerImg" class="max-w-full max-h-full rounded-lg object-contain" alt="">
+    <button class="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/15 text-white text-xl flex items-center justify-center" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <!-- 🔐 부부 전용 비로그인/미등록 보호 잠금 화면 -->
+  <div id="coupleAccessGate" class="fixed inset-0 z-[55] bg-slate-900/75 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center text-xl font-bold">💑</span>
+          <div>
+            <h2 class="text-lg font-extrabold text-slate-900">우리하루 부부 전용 공간</h2>
+            <p id="gateSubtitle" class="text-xs text-slate-500">강현우 ♥ 김시문 두 사람만 볼 수 있어요</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. 비로그인 상태 -->
+      <div id="gateSignedOutView" class="space-y-3">
+        <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+          비밀번호를 외울 필요 없어요. 등록된 본인 이메일을 입력하면 <b>일회용 로그인 링크</b>가 메일로 도착해요. 링크를 한 번 누르면 이 휴대폰에서 바로 열립니다.
+        </p>
+        <form id="gateLoginForm" class="space-y-2.5">
+          <label class="block">
+            <span class="block text-xs font-bold text-slate-700 mb-1">내 이메일 주소</span>
+            <input id="gateEmailInput" type="email" autocomplete="email" required placeholder="예: myemail@naver.com" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 ring-theme-primary">
+          </label>
+          <button id="btnGateSendMagicLink" type="submit" class="w-full bg-theme-primary text-white font-extrabold py-3 rounded-xl text-sm shadow-sm hover:opacity-90 transition">
+            📩 이메일로 로그인 링크 받기
+          </button>
+        </form>
+        <p id="gateStatusMessage" class="hidden text-xs font-semibold rounded-xl p-3 bg-indigo-50 text-indigo-700 border border-indigo-200"></p>
+      </div>
+
+      <!-- 2. 세션/링크 확인 중 -->
+      <div id="gateCheckingView" class="hidden py-6 text-center space-y-2">
+        <div class="text-3xl animate-pulse">🔐</div>
+        <p class="text-sm font-bold text-slate-800">로그인 상태와 부부 등록을 확인하고 있어요...</p>
+        <p class="text-xs text-slate-400">잠시만 기다려 주세요.</p>
+      </div>
+
+      <!-- 3. 로그인됐지만 couple_members 미등록 상태 -->
+      <div id="gateUnauthorizedView" class="hidden space-y-3">
+        <div class="rounded-xl bg-amber-50 border border-amber-200 p-3.5 space-y-1.5">
+          <p class="text-sm font-extrabold text-amber-900">🔒 아직 부부 구성원으로 등록되지 않은 계정이에요</p>
+          <p id="gateUnauthEmail" class="text-xs font-semibold text-amber-800"></p>
+          <p class="text-xs text-amber-700 leading-relaxed">
+            공유 일정과 일기는 보호되어 있어요. 아래 버튼으로 본인 등록 SQL을 복사한 뒤 Supabase 대시보드의 <b>SQL Editor</b>에서 한 번 실행해 주세요.
+          </p>
+        </div>
+        <div class="text-[11px] font-mono bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-600 break-all" id="gateUserIdBox"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnGateCopyHusbandSql" type="button" class="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-2.5 rounded-xl text-xs hover:bg-blue-100 transition">🙋‍♂️ 강현우 등록 SQL 복사</button>
+          <button id="btnGateCopyWifeSql" type="button" class="bg-rose-50 text-rose-700 border border-rose-200 font-bold py-2.5 rounded-xl text-xs hover:bg-rose-100 transition">🙋‍♀️ 김시문 등록 SQL 복사</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnGateRecheck" type="button" class="bg-theme-primary text-white font-bold py-2.5 rounded-xl text-xs hover:opacity-90 transition">✅ 등록 후 다시 확인</button>
+          <button id="btnGateSignOut" type="button" class="bg-slate-100 text-slate-700 font-bold py-2.5 rounded-xl text-xs hover:bg-slate-200 transition">다른 이메일로 로그인</button>
+        </div>
+      </div>
+
+      <!-- 기존 로컬 기록 백업 보호 안내 -->
+      <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+        <span class="text-[11px] text-slate-400">이 휴대폰에 적어둔 기록은 지워지지 않고 보존됩니다.</span>
+        <button id="btnGateExportBackup" type="button" class="whitespace-nowrap text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition">📤 내 폰 백업 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📦 최초 로컬 기록 동기화 미리보기 모달 -->
+  <div id="initialSyncModal" class="fixed inset-0 z-[58] bg-black/55 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-3.5 safe-bottom animate-slide-up max-h-[88vh] flex flex-col shadow-2xl">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-800">📦 이 휴대폰의 기록을 공유 캘린더에 합칠까요?</h3>
+          <p class="text-xs text-slate-500 mt-0.5">선택한 항목만 부부 공유 서버에 올라가며, 기존 기록은 절대 삭제되지 않아요.</p>
+        </div>
+        <button id="btnCloseInitialSync" type="button" class="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 text-lg" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="flex items-center justify-between text-xs bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2">
+        <label class="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+          <input id="chkSyncIncludeSeeds" type="checkbox" class="w-4 h-4 rounded">
+          <span>처음 예시 기록(샘플)도 목록에 표시하기</span>
+        </label>
+        <button id="btnSyncToggleAll" type="button" class="font-bold text-theme-primary hover:underline">전체 선택</button>
+      </div>
+      <div id="initialSyncList" class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1"></div>
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+        <button id="btnSkipInitialSync" type="button" class="bg-slate-100 text-slate-600 font-bold py-3 rounded-xl text-xs hover:bg-slate-200 transition">나중에 하기 (로컬 유지)</button>
+        <button id="btnConfirmInitialSync" type="button" class="bg-theme-primary text-white font-extrabold py-3 rounded-xl text-xs hover:opacity-90 transition">선택한 기록 합치기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 알림 -->
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-24 z-[60] hidden items-center gap-3 bg-slate-900/95 text-white text-sm font-semibold pl-4 pr-2 py-2.5 rounded-2xl shadow-lg max-w-[90vw]">
+    <span id="toastMsg"></span>
+    <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
+  </div>
+
+  <script src="app.js?v=16"></script>
+</body>
+</html>
