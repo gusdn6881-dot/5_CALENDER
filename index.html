@@ -406,11 +406,11 @@
 
         <!-- 현재 인증/구성원 상태 안내 -->
         <div id="authStateCard" class="rounded-xl bg-slate-50 border border-slate-200/80 p-3 space-y-2.5">
-          <p id="authStateSummary" class="text-xs font-bold text-slate-700">부부 암구호를 입력하고 내 휴대폰을 선택해 주세요 (최초 1회).</p>
+          <p id="authStateSummary" class="text-xs font-bold text-slate-700">내 암호를 입력하고 내 휴대폰을 선택해 주세요 (최초 1회).</p>
 
           <!-- 기기 선택 영역 -->
           <div id="authEmailFormWrap" class="space-y-2">
-            <input id="inputAuthPasscode" type="password" inputmode="text" autocomplete="off" placeholder="🔑 우리 부부 암구호 입력 (최초 1회)" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 ring-theme-primary">
+            <input id="inputAuthPasscode" type="password" inputmode="text" autocomplete="off" placeholder="🔑 내 전용 암호 입력 (강현우/김시문 각자 설정)" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 ring-theme-primary">
             <div class="grid grid-cols-2 gap-2">
               <button id="btnSelectDeviceHusband" type="button" class="bg-blue-600 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-sm hover:opacity-90 transition">🙋‍♂️ 강현우 폰으로 연결</button>
               <button id="btnSelectDeviceWife" type="button" class="bg-rose-500 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-sm hover:opacity-90 transition">🙋‍♀️ 김시문 폰으로 연결</button>
@@ -435,6 +435,10 @@
             <div class="grid grid-cols-2 gap-2">
               <button id="btnManualSyncNow" type="button" class="bg-theme-primary text-white font-bold py-2 rounded-xl text-xs hover:opacity-90 transition">🔄 지금 새로고침</button>
               <button id="btnOpenInitialSync" type="button" class="bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-2 rounded-xl text-xs hover:bg-indigo-100 transition">📦 이 폰 기록 합치기</button>
+            </div>
+            <div class="flex items-center gap-1.5 pt-1">
+              <input id="inputChangeMyPasscode" type="password" inputmode="text" autocomplete="off" placeholder="새 내 암호 입력" class="flex-1 bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 ring-theme-primary">
+              <button id="btnChangeMyPasscode" type="button" class="whitespace-nowrap bg-slate-800 text-white font-bold px-3 py-2 rounded-xl text-xs hover:opacity-90 transition">🔑 내 암호 변경</button>
             </div>
           </div>
 
@@ -717,18 +721,22 @@
       <!-- 1. 비로그인 상태 -->
       <div id="gateSignedOutView" class="space-y-3">
         <p id="gatePasscodeGuide" class="text-xs text-slate-600 leading-relaxed bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-          처음 한 번만 <b>우리 부부만의 암구호(숫자나 단어)</b>를 입력하고 내 이름을 누르면, 이 휴대폰에 영구 등록되어 다음부터는 묻지 않고 바로 열립니다.
+          강현우·김시문 <b>각자 본인만의 암호</b>를 따로 정해서 쓸 수 있어요. 처음 한 번만 내 암호를 입력하고 내 이름을 누르면 다음부터는 바로 열립니다.
         </p>
+        <div id="gateRoleStatusBadges" class="grid grid-cols-2 gap-2 text-[11px] font-bold">
+          <div id="gateHusbandBadge" class="rounded-xl px-2.5 py-2 bg-blue-50 text-blue-700 border border-blue-200 text-center">🙋‍♂️ 강현우: 첫 암호 설정 전</div>
+          <div id="gateWifeBadge" class="rounded-xl px-2.5 py-2 bg-rose-50 text-rose-700 border border-rose-200 text-center">🙋‍♀️ 김시문: 첫 암호 설정 전</div>
+        </div>
         <label class="block">
-          <span id="gatePasscodeLabel" class="block text-xs font-bold text-slate-700 mb-1">🔑 우리 부부 암구호 (최초 1회)</span>
-          <input id="gatePasscodeInput" type="password" inputmode="text" autocomplete="off" placeholder="예: 결혼기념일 4자리 또는 우리만의 암호" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:ring-2 ring-theme-primary">
+          <span id="gatePasscodeLabel" class="block text-xs font-bold text-slate-700 mb-1">🔑 내 전용 암호 입력 (강현우 / 김시문 각자 설정)</span>
+          <input id="gatePasscodeInput" type="password" inputmode="text" autocomplete="off" placeholder="내가 쓸 암호 입력 (첫 연결 시 이 암호로 등록됨)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:ring-2 ring-theme-primary">
         </label>
         <div class="grid grid-cols-1 gap-2.5">
           <button id="btnGateStartHusband" type="button" class="w-full bg-blue-600 text-white font-extrabold py-3.5 rounded-2xl text-sm shadow-sm hover:opacity-95 transition flex items-center justify-center gap-2">
-            <span>🙋‍♂️</span><span>강현우 폰으로 시작하기</span>
+            <span>🙋‍♂️</span><span id="btnGateStartHusbandText">강현우 암호로 시작하기</span>
           </button>
           <button id="btnGateStartWife" type="button" class="w-full bg-rose-500 text-white font-extrabold py-3.5 rounded-2xl text-sm shadow-sm hover:opacity-95 transition flex items-center justify-center gap-2">
-            <span>🙋‍♀️</span><span>김시문 폰으로 시작하기</span>
+            <span>🙋‍♀️</span><span id="btnGateStartWifeText">김시문 암호로 시작하기</span>
           </button>
         </div>
         <p id="gateStatusMessage" class="hidden text-xs font-semibold rounded-xl p-3 bg-indigo-50 text-indigo-700 border border-indigo-200"></p>
@@ -800,6 +808,6 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>
