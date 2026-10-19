@@ -17,11 +17,14 @@
 // ==============================================================================
 const DEFAULT_SUPABASE_URL = 'https://jfmwbjefszwvfxuxtgzg.supabase.co';
 const DEFAULT_SUPABASE_KEY = 'sb_publishable_U5bm3JSYDqZq3Sa3wifm5Q_uYBPSNpp';
+const COUPLE_LOCK_ID = '__couple_lock__';
+const COUPLE_LOCK_VERIFIER = 'WOORIHAROO_COUPLE_VERIFIED_V1';
 
 let supabaseClient = null;
 let realtimeChannel = null;
 let authSubscription = null;
 let isRemoteUpdating = false;
+let coupleCryptoKey = null;
 let remoteSnapshotIds = { events: new Set(), todos: new Set(), diaries: new Set() };
 let authState = {
   status: 'signed_out', // 'offline' | 'signed_out' | 'checking' | 'unauthorized' | 'authorized' | 'error'
@@ -29,8 +32,137 @@ let authState = {
   member: null,
   lastVerifiedSyncAt: null,
   errorMessage: '',
-  schemaProtected: true
+  schemaProtected: true,
+  hasRemoteLock: false
 };
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
+  }
+  return out;
+}
+
+async function deriveCoupleCryptoKey(passcode) {
+  const clean = String(passcode || '').trim();
+  if (!clean || !window.crypto || !window.crypto.subtle) return null;
+  const enc = new TextEncoder();
+  const baseKey = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(clean),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return window.crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: enc.encode('wooriharoo-couple-salt-v1'),
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptCoupleField(plainText, keyOverride) {
+  const key = keyOverride || coupleCryptoKey;
+  const str = String(plainText ?? '');
+  if (!str || !key || str.startsWith('ENC1:')) return str;
+  const enc = new TextEncoder();
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const ct = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(str));
+  const combined = new Uint8Array(iv.length + ct.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ct), iv.length);
+  return 'ENC1:' + bytesToBase64(combined);
+}
+
+async function decryptCoupleField(cipherText, keyOverride) {
+  const key = keyOverride || coupleCryptoKey;
+  const str = String(cipherText ?? '');
+  if (!str || !str.startsWith('ENC1:')) return str;
+  if (!key) return '🔒 (암구호 잠금)';
+  try {
+    const raw = base64ToBytes(str.slice(5));
+    const iv = raw.subarray(0, 12);
+    const ct = raw.subarray(12);
+    const pt = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function verifyOrCreateRemoteCoupleLock(passcode) {
+  const clean = String(passcode || '').trim();
+  if (!clean) return { ok: false, reason: 'empty' };
+  const key = await deriveCoupleCryptoKey(clean);
+  if (!key) return { ok: false, reason: 'crypto_unavailable' };
+
+  if (!supabaseClient) {
+    coupleCryptoKey = key;
+    return { ok: true, key: key, offline: true };
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('events')
+      .select('*')
+      .eq('id', COUPLE_LOCK_ID)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Lock check warning:', error);
+      coupleCryptoKey = key;
+      return { ok: true, key: key };
+    }
+
+    if (data && data.title && String(data.title).startsWith('ENC1:')) {
+      authState.hasRemoteLock = true;
+      const decrypted = await decryptCoupleField(data.title, key);
+      if (decrypted !== COUPLE_LOCK_VERIFIER) {
+        return { ok: false, reason: 'mismatch' };
+      }
+      coupleCryptoKey = key;
+      return { ok: true, key: key, verified: true };
+    }
+
+    const encVerifier = await encryptCoupleField(COUPLE_LOCK_VERIFIER, key);
+    const lockPayload = {
+      id: COUPLE_LOCK_ID,
+      title: encVerifier,
+      date: '1970-01-01',
+      time: '',
+      owner: 'system',
+      color: '#6366F1',
+      start_time: '1970-01-01T00:00:00',
+      end_time: '1970-01-01T23:59:59'
+    };
+    await supabaseClient.from('events').upsert(lockPayload);
+    authState.hasRemoteLock = true;
+    coupleCryptoKey = key;
+    return { ok: true, key: key, created: true };
+  } catch (e) {
+    console.warn('verifyOrCreateRemoteCoupleLock error:', e);
+    coupleCryptoKey = key;
+    return { ok: true, key: key };
+  }
+}
 
 function isForbiddenSecretKey(k) {
   const val = String(k || '').trim();
@@ -108,19 +240,23 @@ function isSampleRecord(type, item) {
 }
 
 function isAuthorizedCoupleSession() {
-  return !!(supabaseClient && authState.status === 'authorized' && authState.user && authState.member);
+  return !!(supabaseClient && authState.status === 'authorized' && authState.user && authState.member && coupleCryptoKey);
 }
 
 function getSavedDeviceMember() {
   const role = localStorage.getItem('cal_device_role') || '';
+  const savedPasscode = localStorage.getItem('cal_couple_passcode') || '';
+  if (!savedPasscode) return null;
   if (role === 'husband') {
     return {
+      passcode: savedPasscode,
       user: { id: 'device-husband', email: '' },
       member: { user_id: 'device-husband', display_name: (typeof state !== 'undefined' && state.husbandName) ? state.husbandName : (localStorage.getItem('cal_name_husband') || '강현우'), role: 'husband' }
     };
   }
   if (role === 'wife') {
     return {
+      passcode: savedPasscode,
       user: { id: 'device-wife', email: '' },
       member: { user_id: 'device-wife', display_name: (typeof state !== 'undefined' && state.wifeName) ? state.wifeName : (localStorage.getItem('cal_name_wife') || '김시문'), role: 'wife' }
     };
@@ -130,11 +266,55 @@ function getSavedDeviceMember() {
 
 async function selectCoupleDeviceRole(role) {
   if (role !== 'husband' && role !== 'wife') return false;
+  const gateInput = document.getElementById('gatePasscodeInput');
+  const settingsInput = document.getElementById('inputAuthPasscode');
+  const gateMsg = document.getElementById('gateStatusMessage');
+  const rawPasscode = ((gateInput && gateInput.value.trim()) || (settingsInput && settingsInput.value.trim()) || localStorage.getItem('cal_couple_passcode') || '').trim();
+
+  if (!rawPasscode || rawPasscode.length < 2) {
+    const msg = '🔑 먼저 우리 부부만의 암구호(2글자 이상 숫자나 단어)를 입력해 주세요!';
+    if (gateMsg) {
+      gateMsg.textContent = msg;
+      gateMsg.className = 'text-xs font-semibold rounded-xl p-3 bg-amber-50 text-amber-800 border border-amber-200';
+      gateMsg.classList.remove('hidden');
+    }
+    showToast(msg);
+    if (gateInput && !gateInput.closest('#coupleAccessGate.hidden')) gateInput.focus();
+    else if (settingsInput) settingsInput.focus();
+    return false;
+  }
+
+  if (!supabaseClient && state.supabaseUrl && state.supabaseKey && window.supabase) {
+    supabaseClient = window.supabase.createClient(state.supabaseUrl, state.supabaseKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+  }
+
+  const check = await verifyOrCreateRemoteCoupleLock(rawPasscode);
+  if (!check.ok) {
+    const errText = check.reason === 'mismatch'
+      ? '🔒 암구호가 일치하지 않아요! 배우자와 약속한 부부 암구호를 다시 확인해 주세요.'
+      : '암구호 확인 중 오류가 발생했어요. 다시 시도해 주세요.';
+    if (gateMsg) {
+      gateMsg.textContent = errText;
+      gateMsg.className = 'text-xs font-semibold rounded-xl p-3 bg-rose-50 text-rose-700 border border-rose-200';
+      gateMsg.classList.remove('hidden');
+    }
+    showToast(errText);
+    return false;
+  }
+
+  if (gateMsg) gateMsg.classList.add('hidden');
   localStorage.setItem('cal_device_role', role);
+  localStorage.setItem('cal_couple_passcode', rawPasscode);
+  if (gateInput) gateInput.value = '';
+  if (settingsInput) settingsInput.value = '';
+
   const ok = await initSupabase(state.supabaseUrl, state.supabaseKey, false);
   const info = getSavedDeviceMember();
   if (info) {
-    showToast('반가워요 ' + info.member.display_name + ' 님! 이 휴대폰이 등록되었어요 💑');
+    const suffix = check.created ? ' (새 부부 암구호 잠금 설정 완료 🔒)' : ' (부부 암구호 인증 완료 🔒)';
+    showToast('반가워요 ' + info.member.display_name + ' 님!' + suffix);
   }
   return ok;
 }
@@ -195,8 +375,22 @@ function renderAuthUiState() {
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
     if (signOutBtn) signOutBtn.classList.add('hidden');
   } else if (authState.status === 'signed_out') {
-    updateSupabaseBadge('signed_out', '⚪ 기기 선택', 'bg-slate-100 text-slate-600 border border-slate-200');
-    if (summaryEl) summaryEl.textContent = '누구의 휴대폰인지 아래에서 한 번만 선택해 주세요.';
+    updateSupabaseBadge('signed_out', '🔒 암구호 필요', 'bg-slate-100 text-slate-600 border border-slate-200');
+    if (summaryEl) {
+      summaryEl.textContent = authState.hasRemoteLock
+        ? '등록된 부부 암구호를 입력하고 내 휴대폰을 선택해 주세요 (최초 1회).'
+        : '처음 한 번, 우리 두 사람만 쓸 암구호를 정하고 내 휴대폰을 선택해 주세요.';
+    }
+    const gateGuide = document.getElementById('gatePasscodeGuide');
+    const gateLabel = document.getElementById('gatePasscodeLabel');
+    if (gateGuide) {
+      gateGuide.innerHTML = authState.hasRemoteLock
+        ? '🔒 <b>부부 암구호로 보호 중입니다.</b><br>약속한 암구호를 한 번만 입력하고 내 이름을 누르면, 이 휴대폰에 영구 등록되어 다음부터는 바로 열립니다.'
+        : '처음 한 번만 <b>우리 부부만의 암구호(숫자나 단어)</b>를 정해서 입력하고 내 이름을 누르면, 모든 일정과 일기가 암호화 보호되며 다음부터는 바로 열립니다.';
+    }
+    if (gateLabel) {
+      gateLabel.textContent = authState.hasRemoteLock ? '🔑 등록된 부부 암구호 입력 (최초 1회)' : '🔑 새 부부 암구호 정하기 (최초 1회)';
+    }
     if (emailFormWrap) emailFormWrap.classList.remove('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
@@ -220,9 +414,9 @@ function renderAuthUiState() {
     if (pendingCount > 0) {
       updateSupabaseBadge('warning', '🟠 재동기화 필요 (' + pendingCount + ')', 'bg-amber-50 text-amber-700 border border-amber-200');
     } else {
-      updateSupabaseBadge('online', '🟢 ' + memberName + ' 연결됨', 'bg-emerald-50 text-emerald-600 border border-emerald-200');
+      updateSupabaseBadge('online', '🟢 ' + memberName + ' (🔒보호됨)', 'bg-emerald-50 text-emerald-600 border border-emerald-200');
     }
-    if (summaryEl) summaryEl.textContent = '💑 인증된 부부 구성원: ' + memberName + (email ? ' (' + email + ')' : '');
+    if (summaryEl) summaryEl.textContent = '💑 인증된 부부 기기: ' + memberName + ' · 🔒 암구호 암호화 작동 중';
     if (emailFormWrap) emailFormWrap.classList.add('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.remove('hidden');
@@ -264,10 +458,25 @@ async function initSupabase(url, key, isManual = false) {
 
     const savedDevice = getSavedDeviceMember();
     if (!savedDevice) {
-      authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', schemaProtected: true };
+      try {
+        const lockProbe = await supabaseClient.from('events').select('id,title').eq('id', COUPLE_LOCK_ID).maybeSingle();
+        authState.hasRemoteLock = !!(lockProbe && lockProbe.data && String(lockProbe.data.title || '').startsWith('ENC1:'));
+      } catch (e) {}
+      authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', schemaProtected: true, hasRemoteLock: authState.hasRemoteLock };
       renderAuthUiState();
-      if (isManual) showToast('누구의 휴대폰인지 선택해 주세요 💑');
+      if (isManual) showToast('부부 암구호를 입력하고 기기를 선택해 주세요 🔒');
       return true;
+    }
+
+    const lockCheck = await verifyOrCreateRemoteCoupleLock(savedDevice.passcode);
+    if (!lockCheck.ok) {
+      localStorage.removeItem('cal_couple_passcode');
+      localStorage.removeItem('cal_device_role');
+      coupleCryptoKey = null;
+      authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', schemaProtected: true, hasRemoteLock: true };
+      renderAuthUiState();
+      showToast('부부 암구호가 변경되었어요. 다시 한 번 입력해 주세요 🔒');
+      return false;
     }
 
     authState.user = savedDevice.user;
@@ -436,13 +645,15 @@ async function signOutSupabase() {
       realtimeChannel = null;
     }
     localStorage.removeItem('cal_device_role');
+    localStorage.removeItem('cal_couple_passcode');
+    coupleCryptoKey = null;
     if (supabaseClient) {
       await supabaseClient.auth.signOut();
     }
   } catch (e) {}
-  authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '' };
+  authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', hasRemoteLock: authState.hasRemoteLock };
   renderAuthUiState();
-  showToast('기기 선택 화면으로 돌아갔어요.');
+  showToast('이 기기의 잠금 등록을 해제했어요 🔒');
 }
 
 function buildMemberRegistrationSql(displayName, role) {
@@ -491,8 +702,63 @@ function mergeRemoteWithLocalPreservingCollisions(localList, remoteList, normali
   };
 }
 
+async function decodeRemoteEventRow(re) {
+  const parsed = parseRemoteEvent(re);
+  if (parsed.title && String(parsed.title).startsWith('ENC1:')) {
+    const dec = await decryptCoupleField(parsed.title);
+    parsed.title = dec !== null ? dec : '🔒 암호화된 약속';
+  }
+  return parsed;
+}
+
+async function decodeRemoteTodoRow(rt) {
+  let title = rt.title || '';
+  if (String(title).startsWith('ENC1:')) {
+    const dec = await decryptCoupleField(title);
+    title = dec !== null ? dec : '🔒 암호화된 할 일';
+  }
+  return {
+    id: rt.id,
+    title: title,
+    isCompleted: rt.is_completed ?? rt.isCompleted ?? false,
+    dueDate: rt.due_date || rt.dueDate || ''
+  };
+}
+
+async function decodeRemoteDiaryRow(rd) {
+  let content = rd.content || '';
+  if (String(content).startsWith('ENC1:')) {
+    const dec = await decryptCoupleField(content);
+    content = dec !== null ? dec : '🔒 암호화된 일기';
+  }
+  const rawMedia = Array.isArray(rd.media) ? rd.media : [];
+  const decodedMedia = [];
+  for (const m of rawMedia) {
+    if (!m) continue;
+    let url = m.url || '';
+    let name = m.name || '';
+    if (String(url).startsWith('ENC1:')) {
+      const decUrl = await decryptCoupleField(url);
+      if (decUrl !== null) url = decUrl;
+    }
+    if (String(name).startsWith('ENC1:')) {
+      const decName = await decryptCoupleField(name);
+      if (decName !== null) name = decName;
+    }
+    decodedMedia.push(Object.assign({}, m, { url: url, name: name }));
+  }
+  return {
+    id: rd.id,
+    date: rd.date,
+    mood: rd.mood || '🥰',
+    content: content,
+    media: decodedMedia,
+    createdAt: rd.created_at || rd.createdAt || new Date().toISOString()
+  };
+}
+
 async function pullRemoteSupabaseData() {
-  if (!supabaseClient) return false;
+  if (!supabaseClient || !coupleCryptoKey) return false;
   try {
     const [evRes, tdRes, diRes] = await Promise.all([
       supabaseClient.from('events').select('*'),
@@ -505,12 +771,22 @@ async function pullRemoteSupabaseData() {
       return false;
     }
 
+    const rawEvents = (evRes.data || []).filter(r => r && r.id !== COUPLE_LOCK_ID);
+    const rawTodos = tdRes.data || [];
+    const rawDiaries = diRes.data || [];
+
+    const [decodedEvents, decodedTodos, decodedDiaries] = await Promise.all([
+      Promise.all(rawEvents.map(decodeRemoteEventRow)),
+      Promise.all(rawTodos.map(decodeRemoteTodoRow)),
+      Promise.all(rawDiaries.map(decodeRemoteDiaryRow))
+    ]);
+
     isRemoteUpdating = true;
     try {
       const evMerged = mergeRemoteWithLocalPreservingCollisions(
         state.events,
-        evRes.data || [],
-        parseRemoteEvent,
+        decodedEvents,
+        x => x,
         'event'
       );
       state.events = evMerged.merged;
@@ -519,13 +795,8 @@ async function pullRemoteSupabaseData() {
 
       const tdMerged = mergeRemoteWithLocalPreservingCollisions(
         state.todos,
-        tdRes.data || [],
-        rt => ({
-          id: rt.id,
-          title: rt.title,
-          isCompleted: rt.is_completed ?? rt.isCompleted ?? false,
-          dueDate: rt.due_date || rt.dueDate || ''
-        }),
+        decodedTodos,
+        x => x,
         'todo'
       );
       state.todos = tdMerged.merged;
@@ -534,15 +805,8 @@ async function pullRemoteSupabaseData() {
 
       const diMerged = mergeRemoteWithLocalPreservingCollisions(
         state.diaries,
-        diRes.data || [],
-        rd => ({
-          id: rd.id,
-          date: rd.date,
-          mood: rd.mood || '🥰',
-          content: rd.content || '',
-          media: rd.media || [],
-          createdAt: rd.created_at || rd.createdAt || new Date().toISOString()
-        }),
+        decodedDiaries,
+        x => x,
         'diary'
       );
       state.diaries = diMerged.merged;
@@ -570,10 +834,11 @@ function setupSupabaseRealtime() {
   }
 
   realtimeChannel = supabaseClient.channel('couple_sync_channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, payload => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, async payload => {
       if (isRemoteUpdating) return;
+      if ((payload.new && payload.new.id === COUPLE_LOCK_ID) || (payload.old && payload.old.id === COUPLE_LOCK_ID)) return;
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        const mapped = parseRemoteEvent(payload.new);
+        const mapped = await decodeRemoteEventRow(payload.new);
         remoteSnapshotIds.events.add(mapped.id);
         const idx = state.events.findIndex(e => e.id === mapped.id);
         if (idx >= 0) state.events[idx] = mapped;
@@ -587,16 +852,10 @@ function setupSupabaseRealtime() {
       renderSelectedDateView();
       showToast('상대방이 약속을 변경했어요! 🔄');
     })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, payload => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, async payload => {
       if (isRemoteUpdating) return;
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        const item = payload.new;
-        const mapped = {
-          id: item.id,
-          title: item.title,
-          isCompleted: item.is_completed ?? item.isCompleted ?? false,
-          dueDate: item.due_date || item.dueDate || ''
-        };
+        const mapped = await decodeRemoteTodoRow(payload.new);
         remoteSnapshotIds.todos.add(mapped.id);
         const idx = state.todos.findIndex(t => t.id === mapped.id);
         if (idx >= 0) state.todos[idx] = mapped;
@@ -609,18 +868,10 @@ function setupSupabaseRealtime() {
       renderTodos();
       showToast('상대방이 할 일을 변경했어요! 🔄');
     })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'diaries' }, payload => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'diaries' }, async payload => {
       if (isRemoteUpdating) return;
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        const item = payload.new;
-        const mapped = {
-          id: item.id,
-          date: item.date,
-          mood: item.mood || '🥰',
-          content: item.content || '',
-          media: item.media || [],
-          createdAt: item.created_at || item.createdAt || new Date().toISOString()
-        };
+        const mapped = await decodeRemoteDiaryRow(payload.new);
         remoteSnapshotIds.diaries.add(mapped.id);
         const idx = state.diaries.findIndex(d => d.id === mapped.id);
         if (idx >= 0) state.diaries[idx] = mapped;
@@ -657,9 +908,10 @@ async function pushRemoteEvent(action, item) {
       res = await supabaseClient.from('events').delete().eq('id', item.id);
       if (!res.error) remoteSnapshotIds.events.delete(item.id);
     } else {
+      const encTitle = await encryptCoupleField(item.title || '');
       const payload = {
         id: item.id,
-        title: item.title,
+        title: encTitle,
         date: item.date,
         time: item.time || '',
         owner: (item.owner || 'both') + (item.repeat && item.repeat !== 'none' ? '|' + item.repeat : ''),
@@ -698,9 +950,10 @@ async function pushRemoteTodo(action, item) {
       res = await supabaseClient.from('todos').delete().eq('id', item.id);
       if (!res.error) remoteSnapshotIds.todos.delete(item.id);
     } else {
+      const encTitle = await encryptCoupleField(item.title || '');
       const payload = {
         id: item.id,
-        title: item.title,
+        title: encTitle,
         is_completed: item.isCompleted,
         due_date: item.dueDate || null
       };
@@ -735,12 +988,21 @@ async function pushRemoteDiary(action, item) {
       res = await supabaseClient.from('diaries').delete().eq('id', item.id);
       if (!res.error) remoteSnapshotIds.diaries.delete(item.id);
     } else {
+      const encContent = await encryptCoupleField(item.content || '');
+      const rawMedia = Array.isArray(item.media) ? item.media : [];
+      const encMedia = [];
+      for (const m of rawMedia) {
+        if (!m) continue;
+        const eUrl = m.url ? await encryptCoupleField(m.url) : '';
+        const eName = m.name ? await encryptCoupleField(m.name) : '';
+        encMedia.push(Object.assign({}, m, { url: eUrl, name: eName }));
+      }
       const payload = {
         id: item.id,
         date: item.date,
         mood: item.mood,
-        content: item.content,
-        media: item.media || [],
+        content: encContent,
+        media: encMedia,
         created_at: item.createdAt
       };
       res = await supabaseClient.from('diaries').upsert(payload);
