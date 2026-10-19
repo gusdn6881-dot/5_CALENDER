@@ -111,6 +111,34 @@ function isAuthorizedCoupleSession() {
   return !!(supabaseClient && authState.status === 'authorized' && authState.user && authState.member);
 }
 
+function getSavedDeviceMember() {
+  const role = localStorage.getItem('cal_device_role') || '';
+  if (role === 'husband') {
+    return {
+      user: { id: 'device-husband', email: '' },
+      member: { user_id: 'device-husband', display_name: (typeof state !== 'undefined' && state.husbandName) ? state.husbandName : (localStorage.getItem('cal_name_husband') || '강현우'), role: 'husband' }
+    };
+  }
+  if (role === 'wife') {
+    return {
+      user: { id: 'device-wife', email: '' },
+      member: { user_id: 'device-wife', display_name: (typeof state !== 'undefined' && state.wifeName) ? state.wifeName : (localStorage.getItem('cal_name_wife') || '김시문'), role: 'wife' }
+    };
+  }
+  return null;
+}
+
+async function selectCoupleDeviceRole(role) {
+  if (role !== 'husband' && role !== 'wife') return false;
+  localStorage.setItem('cal_device_role', role);
+  const ok = await initSupabase(state.supabaseUrl, state.supabaseKey, false);
+  const info = getSavedDeviceMember();
+  if (info) {
+    showToast('반가워요 ' + info.member.display_name + ' 님! 이 휴대폰이 등록되었어요 💑');
+  }
+  return ok;
+}
+
 function renderAuthUiState() {
   const gate = document.getElementById('coupleAccessGate');
   const gateSignedOut = document.getElementById('gateSignedOutView');
@@ -130,7 +158,7 @@ function renderAuthUiState() {
   const gateUnauthEmail = document.getElementById('gateUnauthEmail');
 
   const hasSupabaseConfig = !!(state.supabaseUrl && state.supabaseKey);
-  const shouldLockScreen = hasSupabaseConfig && authState.schemaProtected !== false && (authState.status === 'signed_out' || authState.status === 'checking' || authState.status === 'unauthorized');
+  const shouldLockScreen = hasSupabaseConfig && (authState.status === 'signed_out' || authState.status === 'unauthorized');
 
   if (gate) {
     gate.classList.toggle('hidden', !shouldLockScreen);
@@ -167,8 +195,8 @@ function renderAuthUiState() {
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
     if (signOutBtn) signOutBtn.classList.add('hidden');
   } else if (authState.status === 'signed_out') {
-    updateSupabaseBadge('signed_out', '⚪ 로그인 필요', 'bg-slate-100 text-slate-600 border border-slate-200');
-    if (summaryEl) summaryEl.textContent = '이메일을 입력해 일회용 로그인 링크를 받아 주세요.';
+    updateSupabaseBadge('signed_out', '⚪ 기기 선택', 'bg-slate-100 text-slate-600 border border-slate-200');
+    if (summaryEl) summaryEl.textContent = '누구의 휴대폰인지 아래에서 한 번만 선택해 주세요.';
     if (emailFormWrap) emailFormWrap.classList.remove('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
@@ -234,42 +262,29 @@ async function initSupabase(url, key, isManual = false) {
       }
     });
 
-    if (authSubscription && authSubscription.unsubscribe) {
-      authSubscription.unsubscribe();
-    }
-    const subRes = supabaseClient.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        if (realtimeChannel) { realtimeChannel.unsubscribe(); realtimeChannel = null; }
-        authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '' };
-        renderAuthUiState();
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session && session.user) {
-          await verifyMemberAndSync(session.user, event === 'SIGNED_IN');
-        }
-      }
-    });
-    authSubscription = subRes && subRes.data ? subRes.data.subscription : null;
-
-    const { data: sessionData, error: sessionErr } = await supabaseClient.auth.getSession();
-    if (sessionErr) throw sessionErr;
-
-    const activeUser = sessionData && sessionData.session ? sessionData.session.user : null;
-    if (!activeUser) {
-      // Check whether couple_members table exists on server yet
-      let schemaReady = true;
-      try {
-        const probe = await supabaseClient.from('couple_members').select('user_id').limit(1);
-        if (probe && probe.error && (probe.error.code === 'PGRST205' || /Could not find the table/i.test(String(probe.error.message || '')))) {
-          schemaReady = false;
-        }
-      } catch (e) {}
-      authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', schemaProtected: schemaReady };
+    const savedDevice = getSavedDeviceMember();
+    if (!savedDevice) {
+      authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', schemaProtected: true };
       renderAuthUiState();
-      if (isManual) showToast('서버 설정 완료! 이메일로 로그인해 주세요 📩');
+      if (isManual) showToast('누구의 휴대폰인지 선택해 주세요 💑');
       return true;
     }
 
-    return await verifyMemberAndSync(activeUser, isManual);
+    authState.user = savedDevice.user;
+    authState.member = savedDevice.member;
+    const pullOk = await pullRemoteSupabaseData();
+    authState.status = 'authorized';
+    authState.lastVerifiedSyncAt = new Date().toISOString();
+    authState.errorMessage = '';
+    renderAuthUiState();
+    setupSupabaseRealtime();
+    if (pullOk) {
+      maybePromptInitialSync();
+    }
+    if (isManual) {
+      showToast('반가워요 ' + savedDevice.member.display_name + ' 님! 실시간 연결 완료 💑');
+    }
+    return true;
   } catch (err) {
     console.error('Supabase init error:', err);
     authState = {
@@ -420,13 +435,14 @@ async function signOutSupabase() {
       realtimeChannel.unsubscribe();
       realtimeChannel = null;
     }
+    localStorage.removeItem('cal_device_role');
     if (supabaseClient) {
       await supabaseClient.auth.signOut();
     }
   } catch (e) {}
   authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '' };
   renderAuthUiState();
-  showToast('로그아웃했어요.');
+  showToast('기기 선택 화면으로 돌아갔어요.');
 }
 
 function buildMemberRegistrationSql(displayName, role) {
@@ -2274,6 +2290,14 @@ function setupEventListeners() {
       sendMagicLink(email);
     });
   }
+  ['btnGateStartHusband', 'btnSelectDeviceHusband'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', function() { selectCoupleDeviceRole('husband'); });
+  });
+  ['btnGateStartWife', 'btnSelectDeviceWife'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', function() { selectCoupleDeviceRole('wife'); });
+  });
   const gateForm = document.getElementById('gateLoginForm');
   if (gateForm) {
     gateForm.addEventListener('submit', function(e) {
@@ -2322,12 +2346,9 @@ function setupEventListeners() {
   const btnManualSync = document.getElementById('btnManualSyncNow');
   if (btnManualSync) {
     btnManualSync.addEventListener('click', async function() {
-      if (authState.user) {
-        const ok = await verifyMemberAndSync(authState.user, false);
-        if (ok) showToast('최신 공유 기록으로 새로고침했어요! 🔄');
-      } else {
-        await initSupabase(state.supabaseUrl, state.supabaseKey, true);
-      }
+      const ok = await pullRemoteSupabaseData();
+      if (ok) showToast('최신 공유 기록으로 새로고침했어요! 🔄');
+      else await initSupabase(state.supabaseUrl, state.supabaseKey, true);
     });
   }
   const btnRetrySync = document.getElementById('btnRetryPendingSync');
