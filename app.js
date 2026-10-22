@@ -2346,13 +2346,13 @@ function renderStickerUiEverywhere() {
     const eraserActive = state.activeStampStickerId === '__eraser__';
     const itemsHtml = all.map(s => {
       const active = state.activeStampStickerId === s.id;
-      return '<button type="button" onclick="selectStampSticker('' + s.id + '')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
+      return '<button type="button" onclick="selectStampSticker(\'' + s.id + '\')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
         (active ? 'bg-white border-amber-500 ring-2 ring-amber-400 scale-105' : 'bg-white/70 border-amber-200/70 hover:bg-white') + '">' +
         '<img src="' + s.src + '" class="w-10 h-10 object-contain select-none pointer-events-none" alt="">' +
         '<span class="text-[9px] font-bold text-slate-700 truncate max-w-[48px]">' + escapeHtml(s.name) + '</span>' +
         '</button>';
     }).join('');
-    const eraserHtml = '<button type="button" onclick="selectStampSticker('__eraser__')" class="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 rounded-xl border transition ' +
+    const eraserHtml = '<button type="button" onclick="selectStampSticker(\'__eraser__\')" class="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 rounded-xl border transition ' +
       (eraserActive ? 'bg-rose-500 text-white border-rose-500 ring-2 ring-rose-300' : 'bg-white/80 text-rose-600 border-rose-200') + '">' +
       '<span class="text-xl leading-10">🧽</span><span class="text-[9px] font-bold">지우개</span></button>';
     stampPalette.innerHTML = itemsHtml + eraserHtml;
@@ -2364,9 +2364,9 @@ function renderStickerUiEverywhere() {
     catalog.innerHTML = all.map(s => {
       const isCustom = String(s.id).startsWith('custom_');
       const delBtn = isCustom
-        ? '<button type="button" onclick="deleteCustomSticker('' + s.id + '', event)" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow">×</button>'
+        ? '<button type="button" onclick="deleteCustomSticker(\'' + s.id + '\', event)" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow">×</button>'
         : '';
-      return '<div onclick="startStampWithSticker('' + s.id + '')" class="relative cursor-pointer flex flex-col items-center p-2 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-amber-400 hover:bg-amber-50/40 transition active:scale-95">' +
+      return '<div onclick="startStampWithSticker(\'' + s.id + '\')" class="relative cursor-pointer flex flex-col items-center p-2 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-amber-400 hover:bg-amber-50/40 transition active:scale-95">' +
         delBtn +
         '<img src="' + s.src + '" class="w-12 h-12 object-contain" alt="">' +
         '<span class="text-[10px] font-bold text-slate-600 mt-1 truncate max-w-full">' + escapeHtml(s.name) + '</span>' +
@@ -2794,7 +2794,7 @@ function renderSelectedDateView() {
   if (dayStickerBox) {
     dayStickerBox.innerHTML = getAllAvailableStickers().map(s => {
       const selected = curVal === s.id || curVal === s.src;
-      return '<button type="button" onclick="pickDaySheetSticker('' + s.id + '')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
+      return '<button type="button" onclick="pickDaySheetSticker(\'' + s.id + '\')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
         (selected ? 'bg-white border-amber-500 ring-2 ring-amber-400 scale-105' : 'bg-white/70 border-transparent hover:bg-white') + '">' +
         '<img src="' + s.src + '" class="w-9 h-9 object-contain" alt="">' +
         '<span class="text-[9px] font-bold text-slate-600 truncate max-w-[44px]">' + escapeHtml(s.name) + '</span>' +
