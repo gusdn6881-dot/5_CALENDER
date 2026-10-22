@@ -218,12 +218,24 @@
             </button>
           </div>
           <div class="flex items-center gap-1.5">
+            <button id="btnToggleStickerStampMode" type="button" class="whitespace-nowrap text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
+              <span>🐿️</span><span id="stickerStampModeText">스티커</span>
+            </button>
             <button id="btnGoToday" class="whitespace-nowrap text-xs font-bold text-theme-primary bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition">오늘</button>
             <button id="btnToggleCalendarView" class="whitespace-nowrap text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
               <i class="fa-solid fa-compress text-[10px]" id="toggleViewIcon"></i>
               <span id="toggleViewText">이번 주만</span>
             </button>
           </div>
+        </div>
+
+        <!-- 🐿️ 달력 위 바로 찍는 스티커 도장 팔레트 -->
+        <div id="calendarStickerStampBar" class="hidden mb-3 p-2.5 rounded-2xl bg-amber-50/90 border border-amber-200/90 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold text-amber-900">🐿️ 스티커를 고른 뒤 달력 날짜를 톡톡 눌러 붙여보세요!</span>
+            <button id="btnCloseStickerStampBar" type="button" class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white text-slate-600 border border-slate-200">완료</button>
+          </div>
+          <div id="calendarStickerStampPalette" class="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1"></div>
         </div>
 
         <div class="grid grid-cols-7 gap-1 text-center text-xs font-semibold mb-1">
@@ -313,6 +325,36 @@
           </label>
         </div>
         <button id="btnSaveNames" class="w-full bg-theme-primary text-white font-bold py-2.5 rounded-xl text-sm hover:opacity-90 transition">이름 저장하기</button>
+      </div>
+
+      <div class="card-theme rounded-2xl p-4 shadow-sm border space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-base font-extrabold text-slate-800">🐿️ 캘린더 스티커 꾸미기</h3>
+            <p class="text-xs text-slate-500 mt-0.5">귀여운 다람쥐·토끼 캐릭터나 내 사진 스티커로 달력 날짜를 꾸며요.</p>
+          </div>
+          <button id="btnGoStickerStampFromSettings" type="button" class="whitespace-nowrap bg-amber-500 text-white font-extrabold px-3 py-2 rounded-xl text-xs shadow-sm hover:opacity-90 transition">달력에 붙이기 ›</button>
+        </div>
+
+        <div class="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2">
+          <span class="text-xs font-bold text-slate-700">달력 스티커 크기</span>
+          <div class="flex items-center gap-1" id="stickerSizeBtnGroup">
+            <button type="button" class="sticker-size-btn px-2.5 py-1 rounded-lg text-xs font-bold border transition" data-size="sm">작게</button>
+            <button type="button" class="sticker-size-btn px-2.5 py-1 rounded-lg text-xs font-bold border transition" data-size="md">보통</button>
+            <button type="button" class="sticker-size-btn px-2.5 py-1 rounded-lg text-xs font-bold border transition" data-size="lg">큼직하게</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-bold text-slate-600">기본 캐릭터 &amp; 내 커스텀 스티커 목록</span>
+            <label for="inputCustomStickerFile" class="cursor-pointer text-xs font-extrabold text-theme-primary bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition">
+              ➕ 내 사진/짤 스티커 추가
+            </label>
+            <input id="inputCustomStickerFile" type="file" accept="image/*" class="hidden">
+          </div>
+          <div id="settingsStickerCatalog" class="grid grid-cols-4 gap-2 pt-1"></div>
+        </div>
       </div>
 
       <div class="card-theme rounded-2xl p-4 shadow-sm border space-y-3">
@@ -530,6 +572,13 @@
         <button class="quick-add-btn py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-sm font-extrabold text-slate-800 active:scale-95 transition" data-quick="diary">📖 일기</button>
       </div>
       <div class="overflow-y-auto custom-scrollbar px-4 pb-5 space-y-4 border-t border-slate-100 pt-3">
+        <section id="subTabStickerView">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-sm font-bold text-slate-700">🐿️ 이 날의 스티커</span>
+            <button id="btnRemoveDaySticker" type="button" class="hidden text-xs font-bold text-rose-500 hover:underline">스티커 떼기</button>
+          </div>
+          <div id="daySheetStickerList" class="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1.5 px-1 bg-amber-50/50 border border-amber-100 rounded-2xl"></div>
+        </section>
         <section id="subTabEventsView">
           <div class="text-sm font-bold text-slate-700 mb-1.5">📅 약속 <span id="eventCountBadge" class="text-xs text-slate-400">0</span></div>
           <div id="selectedDateEventsList" class="space-y-2"></div>
@@ -808,6 +857,6 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>
