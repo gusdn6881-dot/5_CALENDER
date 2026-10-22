@@ -49,6 +49,10 @@ function isSystemLockRecordId(id) {
   return s === COUPLE_LOCK_ID || s === COUPLE_LOCK_HUSBAND_ID || s === COUPLE_LOCK_WIFE_ID || s === COUPLE_LOCK_BOOTSTRAP_ID || s.indexOf('__couple_lock') === 0;
 }
 
+function isStickerRecordId(id) {
+  return String(id || '').indexOf('__sticker__') === 0;
+}
+
 function bytesToBase64(bytes) {
   let binary = '';
   const chunk = 0x8000;
@@ -912,11 +916,14 @@ async function pullRemoteSupabaseData() {
     }
 
     const rawEvents = (evRes.data || []).filter(r => r && !isSystemLockRecordId(r.id));
+    const rawStickerRows = rawEvents.filter(r => isStickerRecordId(r.id));
+    const normalEventRows = rawEvents.filter(r => !isStickerRecordId(r.id));
     const rawTodos = tdRes.data || [];
     const rawDiaries = diRes.data || [];
 
-    const [decodedEvents, decodedTodos, decodedDiaries] = await Promise.all([
-      Promise.all(rawEvents.map(decodeRemoteEventRow)),
+    const [decodedEvents, decodedStickers, decodedTodos, decodedDiaries] = await Promise.all([
+      Promise.all(normalEventRows.map(decodeRemoteEventRow)),
+      Promise.all(rawStickerRows.map(decodeRemoteEventRow)),
       Promise.all(rawTodos.map(decodeRemoteTodoRow)),
       Promise.all(rawDiaries.map(decodeRemoteDiaryRow))
     ]);
@@ -932,6 +939,15 @@ async function pullRemoteSupabaseData() {
       state.events = evMerged.merged;
       remoteSnapshotIds.events = evMerged.remoteIds;
       saveEvents();
+
+      if (!state.dayStickers) state.dayStickers = {};
+      decodedStickers.forEach(st => {
+        const dStr = st.date || String(st.id || '').replace('__sticker__', '');
+        if (dStr && st.title) {
+          state.dayStickers[dStr] = st.title;
+        }
+      });
+      saveDayStickers();
 
       const tdMerged = mergeRemoteWithLocalPreservingCollisions(
         state.todos,
@@ -977,6 +993,22 @@ function setupSupabaseRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, async payload => {
       if (isRemoteUpdating) return;
       if ((payload.new && isSystemLockRecordId(payload.new.id)) || (payload.old && isSystemLockRecordId(payload.old.id))) return;
+      if ((payload.new && isStickerRecordId(payload.new.id)) || (payload.old && isStickerRecordId(payload.old.id))) {
+        if (!state.dayStickers) state.dayStickers = {};
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const mapped = await decodeRemoteEventRow(payload.new);
+          const dStr = mapped.date || String(mapped.id || '').replace('__sticker__', '');
+          if (dStr && mapped.title) state.dayStickers[dStr] = mapped.title;
+        } else if (payload.eventType === 'DELETE') {
+          const dStr = String((payload.old && payload.old.id) || '').replace('__sticker__', '');
+          if (dStr) delete state.dayStickers[dStr];
+        }
+        saveDayStickers();
+        renderCalendar();
+        renderSelectedDateView();
+        showToast('상대방이 달력 스티커를 붙였어요! 🐿️');
+        return;
+      }
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const mapped = await decodeRemoteEventRow(payload.new);
         remoteSnapshotIds.events.add(mapped.id);
@@ -1838,7 +1870,7 @@ window.closePhotoViewer = function() {
 };
 
 // 백업
-const BACKUP_KEYS = ['cal_events', 'cal_todos', 'cal_diaries', 'cal_anniversary', 'cal_theme_id', 'cal_custom_color', 'cal_is_dark', 'cal_custom_text_color', 'cal_bg_photo', 'cal_bg_opacity', 'cal_bg_blur', 'cal_name_husband', 'cal_name_wife'];
+const BACKUP_KEYS = ['cal_events', 'cal_todos', 'cal_diaries', 'cal_day_stickers', 'cal_custom_stickers', 'cal_sticker_size', 'cal_anniversary', 'cal_theme_id', 'cal_custom_color', 'cal_is_dark', 'cal_custom_text_color', 'cal_bg_photo', 'cal_bg_opacity', 'cal_bg_blur', 'cal_name_husband', 'cal_name_wife'];
 
 function renderLastBackup() {
   const t = localStorage.getItem('cal_last_backup');
@@ -1904,6 +1936,11 @@ let state = {
   events: JSON.parse(localStorage.getItem('cal_events') || '[]'),
   todos: JSON.parse(localStorage.getItem('cal_todos') || '[]'),
   diaries: JSON.parse(localStorage.getItem('cal_diaries') || '[]'),
+  dayStickers: JSON.parse(localStorage.getItem('cal_day_stickers') || '{}'),
+  customStickers: JSON.parse(localStorage.getItem('cal_custom_stickers') || '[]'),
+  stickerSize: localStorage.getItem('cal_sticker_size') || 'lg',
+  stickerStampMode: false,
+  activeStampStickerId: 'ramjju_happy',
   modalType: 'event',
   selectedMood: '🥰',
   tempMediaFiles: [],
@@ -2022,6 +2059,356 @@ const tabs = {
 // ==============================================================================
 // 🎨 테마 및 배경
 // ==============================================================================
+
+// 🐿️ 귀여운 다람쥐(람쭈 스타일) & 아기토끼 캐릭터 일러스트 스티커팩 (SVG 내장)
+function makeSvgStickerDataUri(svgInner) {
+  const full = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' + svgInner + '</svg>';
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(full);
+}
+
+const DEFAULT_CHARACTER_STICKERS = [
+  {
+    id: 'ramjju_happy',
+    name: '신남 다람쥐',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="76" cy="62" rx="16" ry="20" fill="#E69F45" stroke="#4A2C11" stroke-width="3.5" transform="rotate(20 76 62)"/>' +
+      '<path d="M72 52 C84 48 86 66 74 68" fill="none" stroke="#B86B1B" stroke-width="3" stroke-linecap="round"/>' +
+      '<circle cx="30" cy="24" r="11" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="24" r="11" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="68" rx="22" ry="18" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="46" rx="28" ry="23" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="24" cy="50" r="10" fill="#FFD384"/>' +
+      '<circle cx="70" cy="50" r="10" fill="#FFD384"/>' +
+      '<path d="M42 23 L47 32 L52 23 Z" fill="#5C3317"/>' +
+      '<ellipse cx="26" cy="52" rx="6" ry="4" fill="#FF7B89" opacity="0.75"/>' +
+      '<ellipse cx="68" cy="52" rx="6" ry="4" fill="#FF7B89" opacity="0.75"/>' +
+      '<circle cx="37" cy="43" r="3.5" fill="#2D1808"/><circle cx="38.2" cy="41.8" r="1.2" fill="#FFF"/>' +
+      '<circle cx="57" cy="43" r="3.5" fill="#2D1808"/><circle cx="58.2" cy="41.8" r="1.2" fill="#FFF"/>' +
+      '<path d="M42 49 Q47 56 52 49 Z" fill="#FF6B6B" stroke="#4A2C11" stroke-width="2.5"/>' +
+      '<ellipse cx="20" cy="60" rx="7" ry="5" fill="#F7C46C" stroke="#4A2C11" stroke-width="3" transform="rotate(-30 20 60)"/>' +
+      '<ellipse cx="74" cy="60" rx="7" ry="5" fill="#F7C46C" stroke="#4A2C11" stroke-width="3" transform="rotate(30 74 60)"/>'
+    )
+  },
+  {
+    id: 'ramjju_love',
+    name: '하트뿅 다람쥐',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="76" cy="64" rx="15" ry="19" fill="#E69F45" stroke="#4A2C11" stroke-width="3.5" transform="rotate(20 76 64)"/>' +
+      '<circle cx="30" cy="27" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="27" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="70" rx="21" ry="16" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="48" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<path d="M42 26 L47 35 L52 26 Z" fill="#5C3317"/>' +
+      '<ellipse cx="26" cy="53" rx="6.5" ry="4.5" fill="#FF5E7E" opacity="0.85"/>' +
+      '<ellipse cx="68" cy="53" rx="6.5" ry="4.5" fill="#FF5E7E" opacity="0.85"/>' +
+      '<path d="M33 43 Q37 38 41 43" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M53 43 Q57 38 61 43" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M43 50 Q47 54 51 50" fill="none" stroke="#4A2C11" stroke-width="2.8" stroke-linecap="round"/>' +
+      '<path d="M47 18 C43 10 31 12 35 21 C38 26 47 30 47 30 C47 30 56 26 59 21 C63 12 51 10 47 18 Z" fill="#FF477E" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'ramjju_cry',
+    name: '우앙 다람쥐',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="75" cy="64" rx="15" ry="18" fill="#E69F45" stroke="#4A2C11" stroke-width="3.5" transform="rotate(20 75 64)"/>' +
+      '<circle cx="30" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="70" rx="21" ry="16" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="48" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<path d="M42 26 L47 35 L52 26 Z" fill="#5C3317"/>' +
+      '<path d="M31 44 L40 46 L31 48" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M63 44 L54 46 L63 48" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<rect x="28" y="47" width="7" height="22" rx="3.5" fill="#60A5FA"/>' +
+      '<rect x="59" y="47" width="7" height="22" rx="3.5" fill="#60A5FA"/>' +
+      '<path d="M40 56 Q47 48 54 56 Z" fill="#FF6B6B" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'ramjju_cheer',
+    name: '갓생 화이팅',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="75" cy="64" rx="15" ry="18" fill="#E69F45" stroke="#4A2C11" stroke-width="3.5" transform="rotate(20 75 64)"/>' +
+      '<circle cx="30" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="70" rx="21" ry="16" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="48" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<path d="M22 36 Q47 30 72 36" fill="none" stroke="#EF4444" stroke-width="6" stroke-linecap="round"/>' +
+      '<circle cx="37" cy="45" r="3.5" fill="#2D1808"/><circle cx="57" cy="45" r="3.5" fill="#2D1808"/>' +
+      '<path d="M33 39 L41 42" stroke="#4A2C11" stroke-width="2.8" stroke-linecap="round"/>' +
+      '<path d="M61 39 L53 42" stroke="#4A2C11" stroke-width="2.8" stroke-linecap="round"/>' +
+      '<path d="M43 52 Q47 56 51 52" fill="none" stroke="#4A2C11" stroke-width="2.8" stroke-linecap="round"/>' +
+      '<circle cx="21" cy="56" r="6.5" fill="#EF4444" stroke="#4A2C11" stroke-width="2.8"/>' +
+      '<circle cx="73" cy="56" r="6.5" fill="#EF4444" stroke="#4A2C11" stroke-width="2.8"/>'
+    )
+  },
+  {
+    id: 'ramjju_coffee',
+    name: '카페 데이트',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="75" cy="64" rx="15" ry="18" fill="#E69F45" stroke="#4A2C11" stroke-width="3.5" transform="rotate(20 75 64)"/>' +
+      '<circle cx="30" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="70" rx="21" ry="16" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="48" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<path d="M42 26 L47 35 L52 26 Z" fill="#5C3317"/>' +
+      '<circle cx="37" cy="44" r="3.5" fill="#2D1808"/>' +
+      '<path d="M53 44 Q57 40 61 44" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<ellipse cx="26" cy="52" rx="5.5" ry="3.8" fill="#FF7B89" opacity="0.75"/>' +
+      '<ellipse cx="68" cy="52" rx="5.5" ry="3.8" fill="#FF7B89" opacity="0.75"/>' +
+      '<rect x="36" y="58" width="22" height="22" rx="5" fill="#FFF" stroke="#4A2C11" stroke-width="3"/>' +
+      '<rect x="36" y="65" width="22" height="8" fill="#D97706"/>'
+    )
+  },
+  {
+    id: 'ramjju_eat',
+    name: '맛있는 외식',
+    src: makeSvgStickerDataUri(
+      '<circle cx="30" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="70" rx="21" ry="16" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="48" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="24" cy="52" r="11" fill="#FFD384" stroke="#4A2C11" stroke-width="2.5"/>' +
+      '<circle cx="70" cy="52" r="11" fill="#FFD384" stroke="#4A2C11" stroke-width="2.5"/>' +
+      '<ellipse cx="24" cy="53" rx="6" ry="4" fill="#FF7B89" opacity="0.8"/>' +
+      '<ellipse cx="70" cy="53" rx="6" ry="4" fill="#FF7B89" opacity="0.8"/>' +
+      '<path d="M33 43 Q37 38 41 43" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M53 43 Q57 38 61 43" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M41 50 Q47 58 53 50" fill="#FF6B6B" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'bunny_love',
+    name: '사랑해 토끼',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="36" cy="22" rx="8" ry="18" fill="#FFF" stroke="#4A2C11" stroke-width="3.2" transform="rotate(-8 36 22)"/>' +
+      '<ellipse cx="36" cy="23" rx="4" ry="12" fill="#FBB6CE" transform="rotate(-8 36 23)"/>' +
+      '<ellipse cx="60" cy="22" rx="8" ry="18" fill="#FFF" stroke="#4A2C11" stroke-width="3.2" transform="rotate(8 60 22)"/>' +
+      '<ellipse cx="60" cy="23" rx="4" ry="12" fill="#FBB6CE" transform="rotate(8 60 23)"/>' +
+      '<ellipse cx="48" cy="72" rx="20" ry="15" fill="#FFF" stroke="#4A2C11" stroke-width="3.2"/>' +
+      '<ellipse cx="48" cy="52" rx="26" ry="21" fill="#FFF" stroke="#4A2C11" stroke-width="3.2"/>' +
+      '<ellipse cx="28" cy="55" rx="6" ry="4" fill="#FF7B89" opacity="0.75"/>' +
+      '<ellipse cx="68" cy="55" rx="6" ry="4" fill="#FF7B89" opacity="0.75"/>' +
+      '<circle cx="38" cy="48" r="3.3" fill="#2D1808"/><circle cx="58" cy="48" r="3.3" fill="#2D1808"/>' +
+      '<path d="M45 53 L48 56 L51 53" fill="none" stroke="#FF5E7E" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<path d="M48 67 C43 59 31 61 35 71 C38 76 48 81 48 81 C48 81 58 76 61 71 C65 61 53 59 48 67 Z" fill="#FF477E" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'bunny_party',
+    name: '축하 토끼',
+    src: makeSvgStickerDataUri(
+      '<ellipse cx="34" cy="25" rx="7" ry="16" fill="#FFF" stroke="#4A2C11" stroke-width="3.2" transform="rotate(-15 34 25)"/>' +
+      '<ellipse cx="62" cy="25" rx="7" ry="16" fill="#FFF" stroke="#4A2C11" stroke-width="3.2" transform="rotate(15 62 25)"/>' +
+      '<polygon points="48,6 37,32 59,32" fill="#8B5CF6" stroke="#4A2C11" stroke-width="3"/>' +
+      '<circle cx="48" cy="6" r="4.5" fill="#FBBF24"/>' +
+      '<ellipse cx="48" cy="54" rx="26" ry="21" fill="#FFF" stroke="#4A2C11" stroke-width="3.2"/>' +
+      '<ellipse cx="28" cy="57" rx="6" ry="4" fill="#FF7B89" opacity="0.8"/>' +
+      '<ellipse cx="68" cy="57" rx="6" ry="4" fill="#FF7B89" opacity="0.8"/>' +
+      '<path d="M34 49 Q38 44 42 49" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M54 49 Q58 44 62 49" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M43 56 Q48 63 53 56 Z" fill="#FF6B6B" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'couple_heart',
+    name: '우리 둘 하트',
+    src: makeSvgStickerDataUri(
+      '<circle cx="32" cy="56" r="21" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.2"/>' +
+      '<circle cx="68" cy="56" r="21" fill="#FFF" stroke="#4A2C11" stroke-width="3.2"/>' +
+      '<ellipse cx="63" cy="29" rx="5.5" ry="13" fill="#FFF" stroke="#4A2C11" stroke-width="3"/>' +
+      '<ellipse cx="75" cy="29" rx="5.5" ry="13" fill="#FFF" stroke="#4A2C11" stroke-width="3"/>' +
+      '<circle cx="24" cy="39" r="7" fill="#F4B350" stroke="#4A2C11" stroke-width="3"/>' +
+      '<circle cx="42" cy="39" r="7" fill="#F4B350" stroke="#4A2C11" stroke-width="3"/>' +
+      '<circle cx="26" cy="54" r="2.8" fill="#2D1808"/><circle cx="38" cy="54" r="2.8" fill="#2D1808"/>' +
+      '<circle cx="62" cy="54" r="2.8" fill="#2D1808"/><circle cx="74" cy="54" r="2.8" fill="#2D1808"/>' +
+      '<path d="M50 22 C45 13 33 15 37 25 C40 31 50 36 50 36 C50 36 60 31 63 25 C67 15 55 13 50 22 Z" fill="#FF477E" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'ramjju_trip',
+    name: '여행 가자',
+    src: makeSvgStickerDataUri(
+      '<circle cx="30" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="52" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<rect x="25" y="40" width="19" height="12" rx="4" fill="#1E293B" stroke="#FFF" stroke-width="1.5"/>' +
+      '<rect x="50" y="40" width="19" height="12" rx="4" fill="#1E293B" stroke="#FFF" stroke-width="1.5"/>' +
+      '<line x1="44" y1="45" x2="50" y2="45" stroke="#1E293B" stroke-width="3.5"/>' +
+      '<path d="M41 57 Q47 64 53 57" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>'
+    )
+  },
+  {
+    id: 'ramjju_sleep',
+    name: '푹 쉬는 날',
+    src: makeSvgStickerDataUri(
+      '<circle cx="30" cy="28" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="28" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="54" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<path d="M32 49 Q37 53 42 49" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M52 49 Q57 53 62 49" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<ellipse cx="60" cy="56" rx="7" ry="5" fill="#BAE6FD" opacity="0.85" stroke="#0284C7" stroke-width="2"/>' +
+      '<text x="68" y="24" font-size="16" font-weight="900" fill="#6366F1">Zzz</text>'
+    )
+  },
+  {
+    id: 'ramjju_money',
+    name: '월급/보너스',
+    src: makeSvgStickerDataUri(
+      '<circle cx="30" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<circle cx="64" cy="26" r="10" fill="#F4B350" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<ellipse cx="47" cy="52" rx="27" ry="22" fill="#F7C46C" stroke="#4A2C11" stroke-width="3.5"/>' +
+      '<text x="29" y="50" font-size="15">⭐</text><text x="51" y="50" font-size="15">⭐</text>' +
+      '<circle cx="47" cy="70" r="14" fill="#FBBF24" stroke="#4A2C11" stroke-width="3"/>' +
+      '<text x="41" y="75" font-size="15" font-weight="900" fill="#78350F">₩</text>'
+    )
+  }
+];
+
+function getAllAvailableStickers() {
+  const customs = Array.isArray(state.customStickers) ? state.customStickers : [];
+  return DEFAULT_CHARACTER_STICKERS.concat(customs);
+}
+
+function resolveStickerSrc(stickerValue) {
+  if (!stickerValue) return '';
+  if (String(stickerValue).startsWith('data:image/')) return stickerValue;
+  const found = getAllAvailableStickers().find(s => s.id === stickerValue);
+  return found ? found.src : '';
+}
+
+function saveDayStickers() {
+  try {
+    localStorage.setItem('cal_day_stickers', JSON.stringify(state.dayStickers || {}));
+  } catch (e) {}
+}
+
+function saveCustomStickers() {
+  try {
+    localStorage.setItem('cal_custom_stickers', JSON.stringify(state.customStickers || []));
+  } catch (e) {
+    showToast('스티커 저장 공간이 부족해요 😥');
+  }
+}
+
+async function setDateSticker(dateStr, stickerIdOrNull) {
+  if (!state.dayStickers) state.dayStickers = {};
+  const recordId = '__sticker__' + dateStr;
+  if (!stickerIdOrNull) {
+    delete state.dayStickers[dateStr];
+    saveDayStickers();
+    renderCalendar();
+    renderSelectedDateView();
+    pushRemoteEvent('delete', { id: recordId, date: dateStr });
+    return;
+  }
+  const found = getAllAvailableStickers().find(s => s.id === stickerIdOrNull);
+  // 커스텀 스티커는 다른 기기에서도 바로 보이도록 이미지 Data URL 자체를 저장
+  const valueToStore = (found && String(found.id).startsWith('custom_')) ? found.src : stickerIdOrNull;
+  state.dayStickers[dateStr] = valueToStore;
+  saveDayStickers();
+  renderCalendar();
+  renderSelectedDateView();
+  pushRemoteEvent('insert', {
+    id: recordId,
+    title: valueToStore,
+    date: dateStr,
+    endDate: dateStr,
+    time: '',
+    owner: 'both',
+    repeat: 'none',
+    color: '#F59E0B'
+  });
+}
+
+function renderStickerUiEverywhere() {
+  const all = getAllAvailableStickers();
+  const size = state.stickerSize || 'lg';
+  document.querySelectorAll('.sticker-size-btn').forEach(btn => {
+    const on = btn.dataset.size === size;
+    btn.className = 'sticker-size-btn px-2.5 py-1 rounded-lg text-xs font-bold border transition ' +
+      (on ? 'bg-theme-primary text-white border-theme-primary' : 'bg-white text-slate-600 border-slate-200');
+  });
+
+  // 1. 달력 상단 도장 팔레트
+  const stampBar = document.getElementById('calendarStickerStampBar');
+  const stampBtn = document.getElementById('btnToggleStickerStampMode');
+  const stampPalette = document.getElementById('calendarStickerStampPalette');
+  if (stampBar) {
+    stampBar.classList.toggle('hidden', !state.stickerStampMode);
+  }
+  if (stampBtn) {
+    stampBtn.className = state.stickerStampMode
+      ? 'whitespace-nowrap text-xs font-extrabold text-white bg-amber-500 border border-amber-500 px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition'
+      : 'whitespace-nowrap text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition';
+  }
+  if (stampPalette) {
+    const eraserActive = state.activeStampStickerId === '__eraser__';
+    const itemsHtml = all.map(s => {
+      const active = state.activeStampStickerId === s.id;
+      return '<button type="button" onclick="selectStampSticker('' + s.id + '')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
+        (active ? 'bg-white border-amber-500 ring-2 ring-amber-400 scale-105' : 'bg-white/70 border-amber-200/70 hover:bg-white') + '">' +
+        '<img src="' + s.src + '" class="w-10 h-10 object-contain select-none pointer-events-none" alt="">' +
+        '<span class="text-[9px] font-bold text-slate-700 truncate max-w-[48px]">' + escapeHtml(s.name) + '</span>' +
+        '</button>';
+    }).join('');
+    const eraserHtml = '<button type="button" onclick="selectStampSticker('__eraser__')" class="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 rounded-xl border transition ' +
+      (eraserActive ? 'bg-rose-500 text-white border-rose-500 ring-2 ring-rose-300' : 'bg-white/80 text-rose-600 border-rose-200') + '">' +
+      '<span class="text-xl leading-10">🧽</span><span class="text-[9px] font-bold">지우개</span></button>';
+    stampPalette.innerHTML = itemsHtml + eraserHtml;
+  }
+
+  // 2. 꾸미기 탭 스티커 카탈로그
+  const catalog = document.getElementById('settingsStickerCatalog');
+  if (catalog) {
+    catalog.innerHTML = all.map(s => {
+      const isCustom = String(s.id).startsWith('custom_');
+      const delBtn = isCustom
+        ? '<button type="button" onclick="deleteCustomSticker('' + s.id + '', event)" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow">×</button>'
+        : '';
+      return '<div onclick="startStampWithSticker('' + s.id + '')" class="relative cursor-pointer flex flex-col items-center p-2 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-amber-400 hover:bg-amber-50/40 transition active:scale-95">' +
+        delBtn +
+        '<img src="' + s.src + '" class="w-12 h-12 object-contain" alt="">' +
+        '<span class="text-[10px] font-bold text-slate-600 mt-1 truncate max-w-full">' + escapeHtml(s.name) + '</span>' +
+        '</div>';
+    }).join('');
+  }
+}
+
+window.selectStampSticker = function(id) {
+  state.activeStampStickerId = id;
+  renderStickerUiEverywhere();
+};
+
+window.startStampWithSticker = function(id) {
+  state.activeStampStickerId = id;
+  state.stickerStampMode = true;
+  switchTab('tabCalendar');
+  renderStickerUiEverywhere();
+  showToast('달력에서 날짜를 톡톡 눌러 스티커를 붙여보세요! 🐿️');
+};
+
+window.deleteCustomSticker = function(id, ev) {
+  if (ev) ev.stopPropagation();
+  state.customStickers = (state.customStickers || []).filter(s => s.id !== id);
+  saveCustomStickers();
+  if (state.activeStampStickerId === id) state.activeStampStickerId = 'ramjju_happy';
+  renderStickerUiEverywhere();
+  showToast('커스텀 스티커를 지웠어요.');
+};
+
+window.pickDaySheetSticker = function(stickerId) {
+  const cur = (state.dayStickers && state.dayStickers[state.selectedDate]) || '';
+  const targetObj = getAllAvailableStickers().find(s => s.id === stickerId);
+  const isSame = cur === stickerId || (targetObj && cur === targetObj.src);
+  if (isSame) {
+    setDateSticker(state.selectedDate, null);
+    showToast('스티커를 뗐어요.');
+  } else {
+    setDateSticker(state.selectedDate, stickerId);
+    showToast('이 날에 귀여운 스티커를 붙였어요! 🐿️');
+  }
+};
 
 function applyTheme(themeConfig, isCustom = false) {
   const root = document.documentElement;
@@ -2154,6 +2541,7 @@ function init() {
   applyUserBgPhoto();
   updateHeaderDate();
   updateDDayBadge();
+  renderStickerUiEverywhere();
   renderCalendar();
   renderSelectedDateView();
   renderTodos();
@@ -2336,8 +2724,38 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
   }
   cell.appendChild(chipWrap);
 
+  // 🐿️ 날짜 칸 스티커 렌더링 (스크린샷처럼 날짜 칸 하단에 큼직하고 귀엽게 표시)
+  const rawSticker = state.dayStickers && state.dayStickers[dateStr];
+  const stickerSrc = resolveStickerSrc(rawSticker);
+  if (stickerSrc) {
+    const sizePx = state.stickerSize === 'sm' ? '26px' : (state.stickerSize === 'md' ? '34px' : '42px');
+    const stickerWrap = document.createElement('div');
+    stickerWrap.className = 'mt-auto pt-0.5 flex items-center justify-center pointer-events-none select-none';
+    const stickerImg = document.createElement('img');
+    stickerImg.src = stickerSrc;
+    stickerImg.alt = '';
+    stickerImg.style.width = sizePx;
+    stickerImg.style.height = sizePx;
+    stickerImg.className = 'object-contain drop-shadow-sm transition-transform';
+    stickerWrap.appendChild(stickerImg);
+    cell.appendChild(stickerWrap);
+  }
+
   cell.addEventListener('click', () => {
     if (Date.now() - state.lastSwipe < 400) return;
+    if (state.stickerStampMode) {
+      state.selectedDate = dateStr;
+      if (state.activeStampStickerId === '__eraser__') {
+        setDateSticker(dateStr, null);
+      } else {
+        const currentVal = state.dayStickers && state.dayStickers[dateStr];
+        const activeObj = getAllAvailableStickers().find(s => s.id === state.activeStampStickerId);
+        const alreadySame = currentVal === state.activeStampStickerId || (activeObj && currentVal === activeObj.src);
+        if (alreadySame) setDateSticker(dateStr, null);
+        else setDateSticker(dateStr, state.activeStampStickerId);
+      }
+      return;
+    }
     state.selectedDate = dateStr;
     renderCalendar();
     renderSelectedDateView();
@@ -2365,6 +2783,24 @@ function renderSelectedDateView() {
 
   renderSelectedDateEventsList(dayEvents);
   renderSelectedDateDiaryBox(dayDiaries);
+
+  // 날짜 상세 시트의 스티커 선택 줄 렌더링
+  const dayStickerBox = document.getElementById('daySheetStickerList');
+  const btnRemSticker = document.getElementById('btnRemoveDaySticker');
+  const curVal = (state.dayStickers && state.dayStickers[state.selectedDate]) || '';
+  if (btnRemSticker) {
+    btnRemSticker.classList.toggle('hidden', !curVal);
+  }
+  if (dayStickerBox) {
+    dayStickerBox.innerHTML = getAllAvailableStickers().map(s => {
+      const selected = curVal === s.id || curVal === s.src;
+      return '<button type="button" onclick="pickDaySheetSticker('' + s.id + '')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
+        (selected ? 'bg-white border-amber-500 ring-2 ring-amber-400 scale-105' : 'bg-white/70 border-transparent hover:bg-white') + '">' +
+        '<img src="' + s.src + '" class="w-9 h-9 object-contain" alt="">' +
+        '<span class="text-[9px] font-bold text-slate-600 truncate max-w-[44px]">' + escapeHtml(s.name) + '</span>' +
+        '</button>';
+    }).join('');
+  }
 }
 
 function renderSelectedDateEventsList(events) {
@@ -2590,6 +3026,72 @@ function setupEventListeners() {
   document.getElementById('btnGoToday').addEventListener('click', function() {
     goToDate(formatDate(new Date()));
   });
+
+  const btnToggleStamp = document.getElementById('btnToggleStickerStampMode');
+  if (btnToggleStamp) {
+    btnToggleStamp.addEventListener('click', function() {
+      state.stickerStampMode = !state.stickerStampMode;
+      renderStickerUiEverywhere();
+      if (state.stickerStampMode) {
+        showToast('스티커 도장 모드 켜짐! 날짜를 눌러 붙여보세요 🐿️');
+      }
+    });
+  }
+  const btnCloseStamp = document.getElementById('btnCloseStickerStampBar');
+  if (btnCloseStamp) {
+    btnCloseStamp.addEventListener('click', function() {
+      state.stickerStampMode = false;
+      renderStickerUiEverywhere();
+    });
+  }
+  const btnGoStampSettings = document.getElementById('btnGoStickerStampFromSettings');
+  if (btnGoStampSettings) {
+    btnGoStampSettings.addEventListener('click', function() {
+      state.stickerStampMode = true;
+      switchTab('tabCalendar');
+      renderStickerUiEverywhere();
+      showToast('스티커를 고르고 달력 날짜를 눌러 붙여보세요! 🐿️');
+    });
+  }
+  const btnRemoveDaySt = document.getElementById('btnRemoveDaySticker');
+  if (btnRemoveDaySt) {
+    btnRemoveDaySt.addEventListener('click', function() {
+      setDateSticker(state.selectedDate, null);
+      showToast('이 날의 스티커를 뗐어요.');
+    });
+  }
+  document.querySelectorAll('.sticker-size-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      state.stickerSize = btn.dataset.size || 'lg';
+      localStorage.setItem('cal_sticker_size', state.stickerSize);
+      renderStickerUiEverywhere();
+      renderCalendar();
+    });
+  });
+  const inputCustomSt = document.getElementById('inputCustomStickerFile');
+  if (inputCustomSt) {
+    inputCustomSt.addEventListener('change', async function(e) {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const dataUrl = await compressImage(file, 160, 0.88);
+        const newSt = {
+          id: 'custom_' + Date.now(),
+          name: '내 스티커',
+          src: dataUrl
+        };
+        if (!Array.isArray(state.customStickers)) state.customStickers = [];
+        state.customStickers.push(newSt);
+        saveCustomStickers();
+        state.activeStampStickerId = newSt.id;
+        renderStickerUiEverywhere();
+        showToast('내 사진 스티커가 추가되었어요! 달력에 붙여보세요 🎉');
+      } catch (err) {
+        showToast('스티커 이미지를 불러오지 못했어요 😥');
+      }
+    });
+  }
 
   document.getElementById('btnOpenEventSearch').addEventListener('click', function() {
     openUpcomingSheet();
