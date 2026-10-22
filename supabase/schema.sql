@@ -167,3 +167,31 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.todos;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.calendars;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.calendar_members;
 
+-- 10. Data API 접근 권한 (GRANT)
+-- 2026-10-30부터 public 스키마에 새로 생성되는 테이블은 Data API(supabase-js/PostgREST/GraphQL)
+-- 접근을 위해 명시적 GRANT가 필요합니다. RLS 정책만으로는 부족하며, 테이블 단위 권한이
+-- 없으면 'permission denied' 오류가 발생합니다. 앞으로 테이블을 추가하면 이 섹션에도
+-- 해당 테이블의 GRANT를 함께 넣어주세요.
+GRANT SELECT ON public.profiles TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO service_role;
+
+GRANT SELECT ON public.calendars TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.calendars TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.calendars TO service_role;
+
+GRANT SELECT ON public.calendar_members TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.calendar_members TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.calendar_members TO service_role;
+
+GRANT SELECT ON public.events TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.events TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.events TO service_role;
+
+GRANT SELECT ON public.todos TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.todos TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.todos TO service_role;
+
+GRANT SELECT ON public.memos TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.memos TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.memos TO service_role;
