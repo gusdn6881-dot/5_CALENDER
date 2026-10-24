@@ -285,6 +285,33 @@ async function changeMyCouplePasscode(newRawPasscode) {
   return true;
 }
 
+async function resetPartnerPasscodeSlot() {
+  const saved = getSavedDeviceMember();
+  if (!saved || !currentMasterSecret || !supabaseClient) {
+    showToast('먼저 내 휴대폰이 연결되어 있어야 해요.');
+    return false;
+  }
+  const myRole = saved.member.role;
+  const partnerName = myRole === 'wife' ? (state.husbandName || '강현우') : (state.wifeName || '김시문');
+  const partnerLockId = myRole === 'wife' ? COUPLE_LOCK_HUSBAND_ID : COUPLE_LOCK_WIFE_ID;
+  if (!confirm(partnerName + ' 님이 새 암호를 다시 정할 수 있도록 기존 암호 잠금을 풀어줄까요? (일정과 일기 기록은 모두 안전하게 유지됩니다)')) {
+    return false;
+  }
+  try {
+    const bootKey = await deriveCoupleCryptoKey(BOOTSTRAP_PASSCODE);
+    const wrappedBoot = await encryptCoupleField(COUPLE_VAULT_PREFIX + currentMasterSecret, bootKey);
+    await supabaseClient.from('events').upsert(makeSystemLockRow(COUPLE_LOCK_BOOTSTRAP_ID, wrappedBoot));
+    await supabaseClient.from('events').delete().eq('id', partnerLockId);
+    await refreshRemoteLockStatus();
+    renderAuthUiState();
+    showToast(partnerName + ' 님 폰에서 이제 새 암호를 다시 설정할 수 있어요! 🔓');
+    return true;
+  } catch (e) {
+    showToast('초기화 중 오류가 발생했어요. 다시 시도해 주세요.');
+    return false;
+  }
+}
+
 function isForbiddenSecretKey(k) {
   const val = String(k || '').trim();
   if (!val) return false;
@@ -3207,6 +3234,20 @@ function setupEventListeners() {
     btnChangePw.addEventListener('click', function() {
       const inp = document.getElementById('inputChangeMyPasscode');
       changeMyCouplePasscode(inp ? inp.value : '');
+    });
+  }
+  const btnResetPartnerPw = document.getElementById('btnResetPartnerPasscode');
+  if (btnResetPartnerPw) {
+    btnResetPartnerPw.addEventListener('click', resetPartnerPasscodeSlot);
+  }
+  const btnToggleVis = document.getElementById('btnToggleGatePasscodeVis');
+  if (btnToggleVis) {
+    btnToggleVis.addEventListener('click', function() {
+      const inp = document.getElementById('gatePasscodeInput');
+      if (!inp) return;
+      const isPw = inp.type === 'password';
+      inp.type = isPw ? 'text' : 'password';
+      btnToggleVis.textContent = isPw ? '숨김' : '보기';
     });
   }
   const gateForm = document.getElementById('gateLoginForm');
