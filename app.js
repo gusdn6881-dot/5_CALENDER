@@ -591,6 +591,86 @@ function isAuthorizedCoupleSession() {
   return !!(supabaseClient && authState.status === 'authorized' && authState.user && authState.member && coupleCryptoKey);
 }
 
+function createCurrentPushReminderClient() {
+  if (!window.PushReminders || typeof window.PushReminders.createClient !== 'function') return null;
+  return window.PushReminders.createClient({
+    Notification: window.Notification || null,
+    navigator: window.navigator,
+    supabaseClient: supabaseClient,
+    vapidPublicKey: window.PUSH_VAPID_PUBLIC_KEY || ''
+  });
+}
+
+function pushReminderStatusText(status) {
+  const messages = {
+    subscribed: '이 휴대폰에서 약속 알림을 받고 있어요.',
+    not_subscribed: '이 휴대폰은 아직 알림이 꺼져 있어요. 아래 버튼을 눌러 켜 주세요.',
+    not_registered: '기기 알림 등록이 서버와 맞지 않아요. 아래 버튼을 눌러 다시 등록해 주세요.',
+    permission_required: '휴대폰 알림 권한이 필요해요. 아래 버튼을 누르고 허용해 주세요.',
+    denied: '휴대폰 설정에서 우리하루 알림을 허용한 뒤 다시 확인해 주세요.',
+    unsupported: '현재 브라우저는 푸시 알림을 지원하지 않아요. iPhone은 홈 화면에 추가한 앱에서 열어 주세요.',
+    missing_config: '알림 서버 키 설정이 아직 끝나지 않았어요. 설정 안내를 먼저 적용해 주세요.',
+    signed_out: '부부 계정으로 로그인한 뒤 사용할 수 있어요.',
+    auth_required: '부부 계정으로 로그인한 뒤 사용할 수 있어요.',
+    save_failed: '이 휴대폰 알림을 서버에 저장하지 못했어요. 알림 SQL과 부부 등록 상태를 확인해 주세요.',
+    subscription_failed: '휴대폰 알림 등록에 실패했어요. 브라우저 권한과 네트워크를 확인해 주세요.',
+    server_unavailable: '알림 서버에 연결하지 못했어요. 알림 SQL과 인터넷 연결을 확인해 주세요.',
+    error: '알림 상태를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요.'
+  };
+  return messages[status] || messages.error;
+}
+
+async function renderPushReminderSettings() {
+  const statusEl = document.getElementById('pushReminderStatus');
+  const button = document.getElementById('btnTogglePushReminders');
+  if (!statusEl || !button || !isAuthorizedCoupleSession()) return;
+  const client = createCurrentPushReminderClient();
+  if (!client) {
+    statusEl.textContent = '알림 기능을 불러오지 못했어요. 앱을 새로고침해 주세요.';
+    button.disabled = true;
+    return;
+  }
+
+  button.disabled = true;
+  const result = await client.getStatus(authState.user.id);
+  statusEl.textContent = pushReminderStatusText(result.status);
+  button.dataset.enabled = result.enabled ? 'true' : 'false';
+  button.textContent = result.enabled ? '🔕 이 기기 알림 끄기' : '🔔 이 기기 알림 켜기';
+  button.disabled = false;
+}
+
+async function toggleCurrentDevicePushReminders() {
+  const button = document.getElementById('btnTogglePushReminders');
+  const statusEl = document.getElementById('pushReminderStatus');
+  if (!isAuthorizedCoupleSession()) {
+    if (statusEl) statusEl.textContent = '먼저 부부 계정으로 로그인해 주세요.';
+    return;
+  }
+  const client = createCurrentPushReminderClient();
+  if (!client) {
+    if (statusEl) statusEl.textContent = '알림 기능을 불러오지 못했어요. 앱을 새로고침해 주세요.';
+    return;
+  }
+
+  const wasEnabled = !!(button && button.dataset.enabled === 'true');
+  if (button) button.disabled = true;
+  if (statusEl) statusEl.textContent = wasEnabled ? '이 휴대폰 알림을 끄고 있어요...' : '이 휴대폰 알림을 준비하고 있어요...';
+
+  const result = wasEnabled
+    ? await client.disable(authState.user.id)
+    : await client.enable(authState.user.id);
+  if (!result.ok) {
+    if (statusEl) statusEl.textContent = pushReminderStatusText(result.reason === 'permission_denied'
+      ? (window.Notification && window.Notification.permission === 'denied' ? 'denied' : 'permission_required')
+      : result.reason);
+    if (button) button.disabled = false;
+    return;
+  }
+
+  await renderPushReminderSettings();
+  showToast(result.status === 'disabled' ? '이 휴대폰 알림을 껐어요.' : '이 휴대폰에서 약속 알림을 받을게요 🔔');
+}
+
 function remoteLockFailureMessage(reason, displayName) {
   if (reason === 'mismatch') {
     return '🔒 ' + (displayName || '등록된 사용자') + ' 님의 암호와 일치하지 않아요. 다시 입력해 주세요.';
@@ -799,7 +879,7 @@ async function initSupabase(url, key, isManual = false) {
       if (isManual) showToast('이메일과 Supabase 계정 암호로 먼저 로그인해 주세요 🔒');
       return true;
     }
-    if (pendingAccountPasswordSetup) {
+    if (typeof pendingAccountPasswordSetup !== 'undefined' && pendingAccountPasswordSetup) {
       authState = {
         status: 'password_setup',
         user: authUser,
@@ -944,6 +1024,7 @@ async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode
     authState.lastVerifiedSyncAt = new Date().toISOString();
     authState.errorMessage = '';
     renderAuthUiState();
+    renderPushReminderSettings();
     setupSupabaseRealtime();
 
     // URL에 매직링크 해시나 코드가 남아 있으면 깔끔하게 정리
@@ -3600,6 +3681,13 @@ function setupEventListeners() {
       else await initSupabase(state.supabaseUrl, state.supabaseKey, true);
     });
   }
+  const btnPushReminders = document.getElementById('btnTogglePushReminders');
+  if (btnPushReminders) {
+    btnPushReminders.addEventListener('click', toggleCurrentDevicePushReminders);
+  }
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && isAuthorizedCoupleSession()) renderPushReminderSettings();
+  });
   const btnRetrySync = document.getElementById('btnRetryPendingSync');
   if (btnRetrySync) {
     btnRetrySync.addEventListener('click', retryPendingSyncQueue);

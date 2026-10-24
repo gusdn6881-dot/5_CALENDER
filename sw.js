@@ -1,8 +1,10 @@
-const CACHE_NAME = 'couple-cal-v26';
+const CACHE_NAME = 'couple-cal-v27';
 const ASSETS = [
   './',
   './index.html',
-  './app.js',
+  './app.js?v=27',
+  './push-config.js?v=27',
+  './push-reminders.js?v=27',
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
@@ -35,4 +37,22 @@ self.addEventListener('fetch', (e) => {
   );
 });
 
+self.addEventListener('push', (e) => {
+  e.waitUntil(self.registration.showNotification('우리하루', {
+    body: '약속 시간이 되었어요. 우리하루에서 확인해 주세요.',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    data: { appUrl: self.registration.scope }
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const appUrl = new URL('./', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    const appWindow = windows.find((client) => client.url.startsWith(appUrl));
+    if (appWindow) return appWindow.focus();
+    return self.clients.openWindow(appUrl);
+  }));
+});
 

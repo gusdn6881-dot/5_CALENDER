@@ -509,6 +509,16 @@
               <button id="btnChangeMyPasscode" type="button" class="whitespace-nowrap bg-slate-800 text-white font-bold px-3 py-2 rounded-xl text-xs hover:opacity-90 transition">🔑 내 암호 변경</button>
             </div>
             <button id="btnResetPartnerPasscode" type="button" class="w-full bg-amber-50 text-amber-800 border border-amber-200 font-bold py-2 rounded-xl text-xs hover:bg-amber-100 transition">🔓 배우자가 암호를 잊었을 때 (배우자 암호 재설정 허용)</button>
+            <div class="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
+              <div>
+                <h4 class="text-sm font-extrabold text-slate-700">🔔 약속 시간 알림</h4>
+                <p id="pushReminderStatus" class="mt-1 text-xs leading-relaxed text-slate-500">이 휴대폰에서 알림 상태를 확인하고 있어요...</p>
+              </div>
+              <button id="btnTogglePushReminders" type="button" class="w-full rounded-xl bg-theme-primary px-3 py-2.5 text-sm font-extrabold text-white hover:opacity-90 transition">
+                🔔 이 기기 알림 켜기
+              </button>
+              <p class="text-[11px] leading-relaxed text-slate-400">두 분 휴대폰에서 각각 켜 주세요. 약속 제목은 잠금 화면에 표시하지 않아요. 종일 일정은 알림이 오지 않아요.</p>
+            </div>
           </div>
 
           <!-- 동기화 오류/재시도 영역 -->
@@ -904,7 +914,8 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="app.js?v=26"></script>
+  <script src="push-config.js?v=27"></script>
+  <script src="push-reminders.js?v=27"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
-
