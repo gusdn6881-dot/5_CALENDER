@@ -40,6 +40,7 @@ let authState = {
   errorMessage: '',
   schemaProtected: true,
   hasRemoteLock: false,
+  lockStatusKnown: false,
   husbandLocked: false,
   wifeLocked: false
 };
@@ -145,17 +146,29 @@ function makeSystemLockRow(id, encryptedTitle) {
 }
 
 async function refreshRemoteLockStatus() {
-  if (!supabaseClient) return;
+  if (!supabaseClient) {
+    authState.lockStatusKnown = false;
+    return false;
+  }
   try {
-    const { data } = await supabaseClient
+    const { data, error } = await supabaseClient
       .from('events')
       .select('id,title')
       .in('id', [COUPLE_LOCK_HUSBAND_ID, COUPLE_LOCK_WIFE_ID, COUPLE_LOCK_BOOTSTRAP_ID]);
+    if (error) {
+      authState.lockStatusKnown = false;
+      return false;
+    }
     const rows = data || [];
     authState.husbandLocked = rows.some(r => r.id === COUPLE_LOCK_HUSBAND_ID && String(r.title || '').startsWith('ENC1:'));
     authState.wifeLocked = rows.some(r => r.id === COUPLE_LOCK_WIFE_ID && String(r.title || '').startsWith('ENC1:'));
     authState.hasRemoteLock = authState.husbandLocked || authState.wifeLocked;
-  } catch (e) {}
+    authState.lockStatusKnown = true;
+    return true;
+  } catch (e) {
+    authState.lockStatusKnown = false;
+    return false;
+  }
 }
 
 async function verifyOrCreateRemoteCoupleLock(role, passcode) {
@@ -169,6 +182,11 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
   const partnerLockId = role === 'wife' ? COUPLE_LOCK_HUSBAND_ID : COUPLE_LOCK_WIFE_ID;
 
   if (!supabaseClient) {
+    // A configured remote project that failed to initialize must never fall back
+    // to a locally derived key and masquerade as a successful remote unlock.
+    if (state.supabaseUrl && state.supabaseKey) {
+      return { ok: false, reason: 'server_unavailable' };
+    }
     const localMaster = localStorage.getItem('cal_couple_master_secret') || generateRandomMasterSecret();
     localStorage.setItem('cal_couple_master_secret', localMaster);
     currentMasterSecret = localMaster;
@@ -177,6 +195,12 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
   }
 
   try {
+    const { data: authData, error: authError } = await supabaseClient.auth.getSession();
+    if (authError) return { ok: false, reason: 'server_error' };
+    if (!authData || !authData.session || !authData.session.user) {
+      return { ok: false, reason: 'auth_required' };
+    }
+
     const { data, error } = await supabaseClient
       .from('events')
       .select('*')
@@ -184,10 +208,7 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
 
     if (error) {
       console.warn('Lock check warning:', error);
-      const fallbackMaster = localStorage.getItem('cal_couple_master_secret') || norm;
-      currentMasterSecret = fallbackMaster;
-      coupleCryptoKey = await deriveCoupleCryptoKey(fallbackMaster);
-      return { ok: true, key: coupleCryptoKey };
+      return { ok: false, reason: 'server_error' };
     }
 
     const rows = data || [];
@@ -198,6 +219,7 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
     authState.husbandLocked = rows.some(r => r.id === COUPLE_LOCK_HUSBAND_ID && String(r.title || '').startsWith('ENC1:'));
     authState.wifeLocked = rows.some(r => r.id === COUPLE_LOCK_WIFE_ID && String(r.title || '').startsWith('ENC1:'));
     authState.hasRemoteLock = authState.husbandLocked || authState.wifeLocked;
+    authState.lockStatusKnown = true;
 
     // 1. 내 역할의 암호 슬롯이 이미 등록되어 있는 경우 -> 내 암호 검증
     if (myRow && myRow.title && String(myRow.title).startsWith('ENC1:')) {
@@ -248,6 +270,9 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
         masterSecret = decBoot.slice(COUPLE_VAULT_PREFIX.length);
       }
     }
+    if (!masterSecret && (partnerRow || bootRow)) {
+      return { ok: false, reason: 'key_unavailable' };
+    }
     if (!masterSecret) {
       masterSecret = localStorage.getItem('cal_couple_master_secret') || generateRandomMasterSecret();
     }
@@ -259,7 +284,11 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
       makeSystemLockRow(myLockId, wrappedForMe),
       makeSystemLockRow(COUPLE_LOCK_BOOTSTRAP_ID, wrappedBoot)
     ];
-    await supabaseClient.from('events').upsert(upserts);
+    const { error: saveError } = await supabaseClient.from('events').upsert(upserts);
+    if (saveError) {
+      console.warn('Lock save warning:', saveError);
+      return { ok: false, reason: 'server_write_failed' };
+    }
 
     if (role === 'wife') authState.wifeLocked = true;
     else authState.husbandLocked = true;
@@ -271,10 +300,7 @@ async function verifyOrCreateRemoteCoupleLock(role, passcode) {
     return { ok: true, key: coupleCryptoKey, created: true };
   } catch (e) {
     console.warn('verifyOrCreateRemoteCoupleLock error:', e);
-    const fallbackMaster = localStorage.getItem('cal_couple_master_secret') || norm;
-    currentMasterSecret = fallbackMaster;
-    coupleCryptoKey = await deriveCoupleCryptoKey(fallbackMaster);
-    return { ok: true, key: coupleCryptoKey };
+    return { ok: false, reason: 'server_error' };
   }
 }
 
@@ -284,12 +310,11 @@ async function changeMyCouplePasscode(newRawPasscode) {
     showToast('새 암호를 2글자 이상 입력해 주세요 🔑');
     return false;
   }
-  const saved = getSavedDeviceMember();
-  if (!saved || !currentMasterSecret) {
+  if (!isAuthorizedCoupleSession() || !currentMasterSecret || !authState.member) {
     showToast('먼저 내 휴대폰으로 로그인된 상태여야 해요.');
     return false;
   }
-  const role = saved.member.role;
+  const role = authState.member.role;
   const myLockId = role === 'wife' ? COUPLE_LOCK_WIFE_ID : COUPLE_LOCK_HUSBAND_ID;
   const norm = clean.toLowerCase().replace(/\s+/g, '');
   const personalKey = await deriveCoupleCryptoKey(role + ':' + norm);
@@ -301,20 +326,19 @@ async function changeMyCouplePasscode(newRawPasscode) {
       return false;
     }
   }
-  localStorage.setItem('cal_couple_passcode', norm);
+  localStorage.removeItem('cal_couple_passcode');
   const inp = document.getElementById('inputChangeMyPasscode');
   if (inp) inp.value = '';
-  showToast(saved.member.display_name + ' 님의 전용 암호를 변경했어요! 🔒');
+  showToast(authState.member.display_name + ' 님의 전용 암호를 변경했어요! 🔒');
   return true;
 }
 
 async function resetPartnerPasscodeSlot() {
-  const saved = getSavedDeviceMember();
-  if (!saved || !currentMasterSecret || !supabaseClient) {
+  if (!isAuthorizedCoupleSession() || !currentMasterSecret || !supabaseClient || !authState.member) {
     showToast('먼저 내 휴대폰이 연결되어 있어야 해요.');
     return false;
   }
-  const myRole = saved.member.role;
+  const myRole = authState.member.role;
   const partnerName = myRole === 'wife' ? (state.husbandName || '강현우') : (state.wifeName || '김시문');
   const partnerLockId = myRole === 'wife' ? COUPLE_LOCK_HUSBAND_ID : COUPLE_LOCK_WIFE_ID;
   if (!confirm(partnerName + ' 님이 새 암호를 다시 정할 수 있도록 기존 암호 잠금을 풀어줄까요? (일정과 일기 기록은 모두 안전하게 유지됩니다)')) {
@@ -336,8 +360,12 @@ async function resetPartnerPasscodeSlot() {
 }
 
 async function forceResetAllPasscodeLocksFromGate() {
+  if (!isAuthorizedCoupleSession()) {
+    showToast('암호 초기화는 인증된 부부 계정으로 로그인한 뒤에만 할 수 있어요.');
+    return false;
+  }
   if (!confirm('강현우·김시문 두 사람의 암호를 처음부터 새로 정할 수 있도록 암호 잠금을 초기화할까요?\n(휴대폰에 저장된 일정과 일기는 절대 지워지지 않습니다!)')) {
-    return;
+    return false;
   }
   try {
     if (!supabaseClient && state.supabaseUrl && state.supabaseKey && window.supabase) {
@@ -358,6 +386,7 @@ async function forceResetAllPasscodeLocksFromGate() {
   if (gateMsg) gateMsg.classList.add('hidden');
   renderAuthUiState();
   showToast('암호 잠금을 초기화했어요! 이제 원하는 새 암호를 입력해 시작하세요 🔓');
+  return true;
 }
 
 function isForbiddenSecretKey(k) {
@@ -439,81 +468,33 @@ function isAuthorizedCoupleSession() {
   return !!(supabaseClient && authState.status === 'authorized' && authState.user && authState.member && coupleCryptoKey);
 }
 
+function remoteLockFailureMessage(reason, displayName) {
+  if (reason === 'mismatch') {
+    return '🔒 ' + (displayName || '등록된 사용자') + ' 님의 암호와 일치하지 않아요. 다시 입력해 주세요.';
+  }
+  if (reason === 'server_write_failed') {
+    return '서버에 암호 잠금을 저장하지 못했어요. Supabase 권한과 테이블 설정을 확인해 주세요.';
+  }
+  if (reason === 'key_unavailable') {
+    return '공유 잠금 복구 정보를 확인할 수 없어요. 기존 기기와 등록 정보를 확인해 주세요.';
+  }
+  if (reason === 'server_unavailable') {
+    return '서버에 연결할 수 없어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요. 입력한 암호는 보존됩니다.';
+  }
+  if (reason === 'server_error') {
+    return '서버에서 암호를 확인하지 못했어요. 입력한 암호는 보존됩니다. 잠시 후 다시 시도해 주세요.';
+  }
+  if (reason === 'auth_required') {
+    return '먼저 내 Supabase 계정으로 로그인해 주세요.';
+  }
+  return '암호 확인에 실패했어요. 입력한 암호와 서버 연결을 확인해 주세요.';
+}
+
 function getSavedDeviceMember() {
   const role = localStorage.getItem('cal_device_role') || '';
   const savedPasscode = localStorage.getItem('cal_couple_passcode') || '';
-  if (!savedPasscode) return null;
-  if (role === 'husband') {
-    return {
-      passcode: savedPasscode,
-      user: { id: 'device-husband', email: '' },
-      member: { user_id: 'device-husband', display_name: (typeof state !== 'undefined' && state.husbandName) ? state.husbandName : (localStorage.getItem('cal_name_husband') || '강현우'), role: 'husband' }
-    };
-  }
-  if (role === 'wife') {
-    return {
-      passcode: savedPasscode,
-      user: { id: 'device-wife', email: '' },
-      member: { user_id: 'device-wife', display_name: (typeof state !== 'undefined' && state.wifeName) ? state.wifeName : (localStorage.getItem('cal_name_wife') || '김시문'), role: 'wife' }
-    };
-  }
-  return null;
-}
-
-async function selectCoupleDeviceRole(role) {
-  if (role !== 'husband' && role !== 'wife') return false;
-  const gateInput = document.getElementById('gatePasscodeInput');
-  const settingsInput = document.getElementById('inputAuthPasscode');
-  const gateMsg = document.getElementById('gateStatusMessage');
-  const rawPasscode = ((gateInput && gateInput.value.trim()) || (settingsInput && settingsInput.value.trim()) || localStorage.getItem('cal_couple_passcode') || '').trim();
-
-  if (!rawPasscode || rawPasscode.length < 2) {
-    const msg = '🔑 먼저 내가 사용할 전용 암호(2글자 이상 숫자나 단어)를 입력해 주세요!';
-    if (gateMsg) {
-      gateMsg.textContent = msg;
-      gateMsg.className = 'text-xs font-semibold rounded-xl p-3 bg-amber-50 text-amber-800 border border-amber-200';
-      gateMsg.classList.remove('hidden');
-    }
-    showToast(msg);
-    if (gateInput && !gateInput.closest('#coupleAccessGate.hidden')) gateInput.focus();
-    else if (settingsInput) settingsInput.focus();
-    return false;
-  }
-
-  if (!supabaseClient && state.supabaseUrl && state.supabaseKey && window.supabase) {
-    supabaseClient = window.supabase.createClient(state.supabaseUrl, state.supabaseKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-    });
-  }
-
-  const check = await verifyOrCreateRemoteCoupleLock(role, rawPasscode);
-  if (!check.ok) {
-    const whoLabel = role === 'wife' ? (state.wifeName || '김시문') : (state.husbandName || '강현우');
-    const errText = check.reason === 'mismatch'
-      ? '🔒 ' + whoLabel + ' 님의 등록된 암호와 일치하지 않아요! 다시 확인해 주세요.'
-      : '암구호 확인 중 오류가 발생했어요. 다시 시도해 주세요.';
-    if (gateMsg) {
-      gateMsg.textContent = errText;
-      gateMsg.className = 'text-xs font-semibold rounded-xl p-3 bg-rose-50 text-rose-700 border border-rose-200';
-      gateMsg.classList.remove('hidden');
-    }
-    showToast(errText);
-    return false;
-  }
-
-  if (gateMsg) gateMsg.classList.add('hidden');
-  localStorage.setItem('cal_device_role', role);
-  localStorage.setItem('cal_couple_passcode', rawPasscode.toLowerCase().replace(/\s+/g, ''));
-  if (gateInput) gateInput.value = '';
-  if (settingsInput) settingsInput.value = '';
-
-  const ok = await initSupabase(state.supabaseUrl, state.supabaseKey, false);
-  const info = getSavedDeviceMember();
-  if (info) {
-    const suffix = check.created ? ' (내 전용 암호 설정 완료 🔒)' : ' (내 암호 인증 완료 🔒)';
-    showToast('반가워요 ' + info.member.display_name + ' 님!' + suffix);
-  }
-  return ok;
+  if (!savedPasscode || (role !== 'husband' && role !== 'wife')) return null;
+  return { passcode: savedPasscode, role: role };
 }
 
 function renderAuthUiState() {
@@ -535,7 +516,7 @@ function renderAuthUiState() {
   const gateUnauthEmail = document.getElementById('gateUnauthEmail');
 
   const hasSupabaseConfig = !!(state.supabaseUrl && state.supabaseKey);
-  const shouldLockScreen = hasSupabaseConfig && (authState.status === 'signed_out' || authState.status === 'unauthorized');
+  const shouldLockScreen = hasSupabaseConfig && (authState.status === 'signed_out' || authState.status === 'checking' || authState.status === 'needs_vault_passcode' || authState.status === 'unauthorized' || authState.status === 'error');
 
   if (gate) {
     gate.classList.toggle('hidden', !shouldLockScreen);
@@ -549,7 +530,7 @@ function renderAuthUiState() {
     fabEl.classList.toggle('hidden', activeSettings);
   }
 
-  if (gateSignedOut) gateSignedOut.classList.toggle('hidden', authState.status !== 'signed_out');
+  if (gateSignedOut) gateSignedOut.classList.toggle('hidden', authState.status !== 'signed_out' && authState.status !== 'needs_vault_passcode' && authState.status !== 'error');
   if (gateChecking) gateChecking.classList.toggle('hidden', authState.status !== 'checking');
   if (gateUnauth) gateUnauth.classList.toggle('hidden', authState.status !== 'unauthorized');
 
@@ -566,31 +547,15 @@ function renderAuthUiState() {
 
   if (authState.status === 'checking') {
     updateSupabaseBadge('checking', '🟡 부부 인증 확인 중', 'bg-amber-50 text-amber-700 border border-amber-200');
-    if (summaryEl) summaryEl.textContent = '로그인 링크와 부부 구성원 등록 상태를 확인하고 있어요...';
+    if (summaryEl) summaryEl.textContent = 'Supabase 계정과 부부 허용 목록을 확인하고 있어요...';
     if (emailFormWrap) emailFormWrap.classList.add('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
     if (signOutBtn) signOutBtn.classList.add('hidden');
   } else if (authState.status === 'signed_out') {
-    updateSupabaseBadge('signed_out', '🔒 암구호 필요', 'bg-slate-100 text-slate-600 border border-slate-200');
+    updateSupabaseBadge('signed_out', '🔒 계정 로그인 필요', 'bg-slate-100 text-slate-600 border border-slate-200');
     if (summaryEl) {
-      summaryEl.textContent = '강현우·김시문 각자 내 암호를 입력하고 내 휴대폰을 선택해 주세요 (최초 1회).';
-    }
-    const hBadge = document.getElementById('gateHusbandBadge');
-    const wBadge = document.getElementById('gateWifeBadge');
-    const hBtnTxt = document.getElementById('btnGateStartHusbandText');
-    const wBtnTxt = document.getElementById('btnGateStartWifeText');
-    if (hBadge) {
-      hBadge.textContent = authState.husbandLocked ? '🙋‍♂️ 강현우: 🔒 암호 등록됨' : '🙋‍♂️ 강현우: ✨ 첫 암호 설정 전';
-    }
-    if (wBadge) {
-      wBadge.textContent = authState.wifeLocked ? '🙋‍♀️ 김시문: 🔒 암호 등록됨' : '🙋‍♀️ 김시문: ✨ 첫 암호 설정 전';
-    }
-    if (hBtnTxt) {
-      hBtnTxt.textContent = authState.husbandLocked ? '강현우 암호로 잠금 해제' : '이 암호로 강현우 폰 시작하기 (첫 등록)';
-    }
-    if (wBtnTxt) {
-      wBtnTxt.textContent = authState.wifeLocked ? '김시문 암호로 잠금 해제' : '이 암호로 김시문 폰 시작하기 (첫 등록)';
+      summaryEl.textContent = '부부 계정으로 로그인해야 공유 기록을 열 수 있어요. 계정 암호는 저장하지 않습니다.';
     }
     if (emailFormWrap) emailFormWrap.classList.remove('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
@@ -622,9 +587,28 @@ function renderAuthUiState() {
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.remove('hidden');
     if (signOutBtn) signOutBtn.classList.remove('hidden');
+  } else if (authState.status === 'needs_vault_passcode') {
+    updateSupabaseBadge('signed_out', '🔑 기록 암호 필요', 'bg-amber-50 text-amber-700 border border-amber-200');
+    if (summaryEl) summaryEl.textContent = '계정은 확인됐어요. 기록 암호를 입력해 공유 기록을 열어 주세요.';
+    const gateStatus = document.getElementById('gateStatusMessage');
+    if (gateStatus && authState.errorMessage) {
+      gateStatus.textContent = authState.errorMessage;
+      gateStatus.className = 'text-xs font-semibold rounded-xl p-3 bg-amber-50 text-amber-800 border border-amber-200';
+      gateStatus.classList.remove('hidden');
+    }
+    if (emailFormWrap) emailFormWrap.classList.add('hidden');
+    if (unregWrap) unregWrap.classList.add('hidden');
+    if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
+    if (signOutBtn) signOutBtn.classList.toggle('hidden', !authState.user);
   } else if (authState.status === 'error') {
     updateSupabaseBadge('error', '🔴 동기화 오류', 'bg-rose-50 text-rose-600 border border-rose-200');
     if (summaryEl) summaryEl.textContent = authState.errorMessage || '서버 연결 또는 권한 확인 중 오류가 발생했어요. 로컬 기록은 안전합니다.';
+    const gateStatus = document.getElementById('gateStatusMessage');
+    if (gateStatus && authState.errorMessage) {
+      gateStatus.textContent = authState.errorMessage;
+      gateStatus.className = 'text-xs font-semibold rounded-xl p-3 bg-rose-50 text-rose-700 border border-rose-200';
+      gateStatus.classList.remove('hidden');
+    }
     if (emailFormWrap) emailFormWrap.classList.toggle('hidden', !!authState.user);
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.toggle('hidden', !authState.member);
@@ -657,9 +641,13 @@ async function initSupabase(url, key, isManual = false) {
       }
     });
 
-    const savedDevice = getSavedDeviceMember();
-    if (!savedDevice) {
-      await refreshRemoteLockStatus();
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    if (sessionError) throw sessionError;
+    const authUser = sessionData && sessionData.session && sessionData.session.user;
+    if (!authUser) {
+      coupleCryptoKey = null;
+      currentMasterSecret = '';
+      if (realtimeChannel) { realtimeChannel.unsubscribe(); realtimeChannel = null; }
       authState = {
         status: 'signed_out',
         user: null,
@@ -667,52 +655,16 @@ async function initSupabase(url, key, isManual = false) {
         lastVerifiedSyncAt: null,
         errorMessage: '',
         schemaProtected: true,
-        hasRemoteLock: authState.hasRemoteLock,
-        husbandLocked: authState.husbandLocked,
-        wifeLocked: authState.wifeLocked
+        hasRemoteLock: false,
+        lockStatusKnown: false,
+        husbandLocked: false,
+        wifeLocked: false
       };
       renderAuthUiState();
-      if (isManual) showToast('내 암호를 입력하고 기기를 선택해 주세요 🔒');
+      if (isManual) showToast('이메일과 Supabase 계정 암호로 먼저 로그인해 주세요 🔒');
       return true;
     }
-
-    const lockCheck = await verifyOrCreateRemoteCoupleLock(savedDevice.member.role, savedDevice.passcode);
-    if (!lockCheck.ok) {
-      localStorage.removeItem('cal_couple_passcode');
-      localStorage.removeItem('cal_device_role');
-      coupleCryptoKey = null;
-      await refreshRemoteLockStatus();
-      authState = {
-        status: 'signed_out',
-        user: null,
-        member: null,
-        lastVerifiedSyncAt: null,
-        errorMessage: '',
-        schemaProtected: true,
-        hasRemoteLock: authState.hasRemoteLock,
-        husbandLocked: authState.husbandLocked,
-        wifeLocked: authState.wifeLocked
-      };
-      renderAuthUiState();
-      showToast('내 계정 암호가 변경되었어요. 다시 한 번 입력해 주세요 🔒');
-      return false;
-    }
-
-    authState.user = savedDevice.user;
-    authState.member = savedDevice.member;
-    const pullOk = await pullRemoteSupabaseData();
-    authState.status = 'authorized';
-    authState.lastVerifiedSyncAt = new Date().toISOString();
-    authState.errorMessage = '';
-    renderAuthUiState();
-    setupSupabaseRealtime();
-    if (pullOk) {
-      maybePromptInitialSync();
-    }
-    if (isManual) {
-      showToast('반가워요 ' + savedDevice.member.display_name + ' 님! 실시간 연결 완료 💑');
-    }
-    return true;
+    return await verifyMemberAndSync(authUser, isManual);
   } catch (err) {
     console.error('Supabase init error:', err);
     authState = {
@@ -728,7 +680,7 @@ async function initSupabase(url, key, isManual = false) {
   }
 }
 
-async function verifyMemberAndSync(user, notifySuccess = false) {
+async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode = '') {
   if (!supabaseClient || !user) {
     authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '' };
     renderAuthUiState();
@@ -739,6 +691,16 @@ async function verifyMemberAndSync(user, notifySuccess = false) {
   renderAuthUiState();
 
   try {
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    const sessionUser = sessionData && sessionData.session && sessionData.session.user;
+    if (sessionError || !sessionUser || sessionUser.id !== user.id) {
+      authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: 'Supabase 계정 로그인이 만료됐어요. 다시 로그인해 주세요.' };
+      coupleCryptoKey = null;
+      currentMasterSecret = '';
+      renderAuthUiState();
+      return false;
+    }
+
     const { data: memberRow, error: memberErr } = await supabaseClient
       .from('couple_members')
       .select('user_id, display_name, role')
@@ -747,11 +709,13 @@ async function verifyMemberAndSync(user, notifySuccess = false) {
 
     if (memberErr) {
       authState = {
-        status: 'unauthorized',
+        status: 'error',
         user: user,
         member: null,
         lastVerifiedSyncAt: null,
-        errorMessage: memberErr.message || 'couple_members 테이블 또는 권한을 확인해 주세요.'
+        errorMessage: /PGRST205|does not exist|schema cache/i.test(String(memberErr.code || '') + ' ' + String(memberErr.message || ''))
+          ? 'Supabase 보안 테이블(couple_members)이 아직 준비되지 않았어요. 설정 SQL을 먼저 적용해 주세요.'
+          : '부부 구성원 확인에 실패했어요. 서버 설정과 연결 상태를 확인해 주세요.'
       };
       renderAuthUiState();
       return false;
@@ -770,7 +734,58 @@ async function verifyMemberAndSync(user, notifySuccess = false) {
       return false;
     }
 
+    if (memberRow.role !== 'husband' && memberRow.role !== 'wife') {
+      authState = { status: 'unauthorized', user: user, member: null, lastVerifiedSyncAt: null, errorMessage: '이 계정에는 남편 또는 아내 역할이 등록되어 있지 않아요.' };
+      renderAuthUiState();
+      return false;
+    }
+
     authState.member = memberRow;
+    if (!coupleCryptoKey || String(rawVaultPasscode || '').trim()) {
+      const saved = getSavedDeviceMember();
+      let passcode = String(rawVaultPasscode || '').trim();
+      if (!passcode && !coupleCryptoKey && saved && saved.role === memberRow.role) passcode = saved.passcode;
+
+      const localMaster = coupleCryptoKey ? '' : (localStorage.getItem('cal_couple_master_secret') || '');
+      if (localMaster) {
+        currentMasterSecret = localMaster;
+        coupleCryptoKey = await deriveCoupleCryptoKey(localMaster);
+      }
+
+      if (passcode) {
+        const lockCheck = await verifyOrCreateRemoteCoupleLock(memberRow.role, passcode);
+        if (!lockCheck.ok) {
+          if (lockCheck.reason === 'mismatch' && !rawVaultPasscode) {
+            localStorage.removeItem('cal_couple_passcode');
+            localStorage.removeItem('cal_device_role');
+          }
+          if (rawVaultPasscode) {
+            coupleCryptoKey = null;
+            currentMasterSecret = '';
+          }
+          authState.status = lockCheck.reason === 'mismatch' ? 'needs_vault_passcode' : 'error';
+          authState.errorMessage = remoteLockFailureMessage(lockCheck.reason, memberRow.display_name);
+          renderAuthUiState();
+          return false;
+        }
+        localStorage.setItem('cal_device_role', memberRow.role);
+        localStorage.removeItem('cal_couple_passcode');
+      }
+
+      if (!coupleCryptoKey) {
+        authState.status = 'needs_vault_passcode';
+        authState.errorMessage = '계정은 확인됐어요. 공유 기록을 열려면 이 계정의 기록 암호를 입력해 주세요.';
+        renderAuthUiState();
+        return false;
+      }
+    } else {
+      const savedRole = localStorage.getItem('cal_device_role') || '';
+      if (savedRole && savedRole !== memberRow.role) {
+        localStorage.removeItem('cal_couple_passcode');
+        localStorage.removeItem('cal_device_role');
+      }
+    }
+
     const pullOk = await pullRemoteSupabaseData();
     if (!pullOk) {
       authState.status = 'error';
@@ -801,6 +816,67 @@ async function verifyMemberAndSync(user, notifySuccess = false) {
     authState.status = 'error';
     authState.errorMessage = '인증 확인 중 오류가 발생했어요. 로컬 기록은 안전합니다.';
     renderAuthUiState();
+    return false;
+  }
+}
+
+async function signInCoupleAccount() {
+  const emailInput = document.getElementById('gateEmailInput');
+  const accountPasswordInput = document.getElementById('gateAccountPasswordInput');
+  const vaultPasscodeInput = document.getElementById('gatePasscodeInput');
+  const gateMsg = document.getElementById('gateStatusMessage');
+  const email = String((emailInput && emailInput.value) || '').trim();
+  const accountPassword = String((accountPasswordInput && accountPasswordInput.value) || '');
+  const vaultPasscode = String((vaultPasscodeInput && vaultPasscodeInput.value) || '').trim();
+  const showGateMessage = function(message, success) {
+    if (!gateMsg) return;
+    gateMsg.textContent = message;
+    gateMsg.className = success
+      ? 'text-xs font-semibold rounded-xl p-3 bg-emerald-50 text-emerald-700 border border-emerald-200'
+      : 'text-xs font-semibold rounded-xl p-3 bg-rose-50 text-rose-700 border border-rose-200';
+    gateMsg.classList.remove('hidden');
+  };
+
+  if (!supabaseClient) {
+    await initSupabase(state.supabaseUrl, state.supabaseKey, false);
+  }
+  if (!supabaseClient) {
+    showGateMessage('서버 설정을 확인할 수 없어요. 인터넷 연결을 확인해 주세요.', false);
+    return false;
+  }
+
+  try {
+    let user = null;
+    if (email && accountPassword) {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email: email, password: accountPassword });
+      if (error) {
+        const message = /invalid login credentials|invalid_credentials/i.test(String(error.message || error.code || ''))
+          ? '이메일 또는 Supabase 계정 암호가 맞지 않아요.'
+          : '계정 로그인에 실패했어요. 연결 상태를 확인하고 다시 시도해 주세요.';
+        showGateMessage(message, false);
+        return false;
+      }
+      user = data && data.user;
+      localStorage.setItem('cal_last_auth_email', email);
+      if (accountPasswordInput) accountPasswordInput.value = '';
+    } else {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) throw error;
+      user = data && data.session && data.session.user;
+      if (!user) {
+        showGateMessage('이메일과 Supabase 계정 암호를 입력해 주세요.', false);
+        return false;
+      }
+    }
+
+    if (!user) {
+      showGateMessage('Supabase 계정 로그인을 확인할 수 없어요. 다시 로그인해 주세요.', false);
+      return false;
+    }
+    return await verifyMemberAndSync(user, true, vaultPasscode);
+  } catch (error) {
+    console.warn('Supabase password sign-in failed:', error);
+    showGateMessage('로그인 중 서버 연결 오류가 발생했어요. 입력한 암호는 저장하지 않았습니다.', false);
     return false;
   }
 }
@@ -870,7 +946,8 @@ async function signOutSupabase() {
       await supabaseClient.auth.signOut();
     }
   } catch (e) {}
-  authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', hasRemoteLock: authState.hasRemoteLock };
+  currentMasterSecret = '';
+  authState = { status: 'signed_out', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '', hasRemoteLock: authState.hasRemoteLock, lockStatusKnown: false };
   renderAuthUiState();
   showToast('이 기기의 잠금 등록을 해제했어요 🔒');
 }
@@ -3262,6 +3339,19 @@ function setupEventListeners() {
       switchTab('tabSettings');
     });
   }
+  const btnGateSignIn = document.getElementById('btnGateSignIn');
+  if (btnGateSignIn) {
+    btnGateSignIn.addEventListener('click', signInCoupleAccount);
+  }
+  const accountPasswordField = document.getElementById('gateAccountPasswordInput');
+  if (accountPasswordField) {
+    accountPasswordField.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        signInCoupleAccount();
+      }
+    });
+  }
   const btnSendMagic = document.getElementById('btnSendMagicLink');
   if (btnSendMagic) {
     btnSendMagic.addEventListener('click', function() {
@@ -3269,14 +3359,6 @@ function setupEventListeners() {
       sendMagicLink(email);
     });
   }
-  ['btnGateStartHusband', 'btnSelectDeviceHusband'].forEach(function(id) {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', function() { selectCoupleDeviceRole('husband'); });
-  });
-  ['btnGateStartWife', 'btnSelectDeviceWife'].forEach(function(id) {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', function() { selectCoupleDeviceRole('wife'); });
-  });
   const btnChangePw = document.getElementById('btnChangeMyPasscode');
   if (btnChangePw) {
     btnChangePw.addEventListener('click', function() {
