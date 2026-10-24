@@ -818,6 +818,25 @@
         <p id="gateStatusMessage" class="hidden text-xs font-semibold rounded-xl p-3 bg-indigo-50 text-indigo-700 border border-indigo-200"></p>
       </div>
 
+      <!-- Supabase 초대 링크로 들어온 사용자의 계정 암호 설정 -->
+      <div id="gatePasswordSetupView" class="hidden space-y-3">
+        <div class="rounded-xl bg-indigo-50 border border-indigo-200 p-3 space-y-1">
+          <p class="text-sm font-extrabold text-indigo-900">✉️ 초대가 확인됐어요</p>
+          <p class="text-xs text-indigo-800 leading-relaxed">이 이메일로 사용할 계정 암호를 정해 주세요. 다음부터는 초대 메일 없이 이메일과 암호로 로그인합니다.</p>
+        </div>
+        <p id="gatePasswordSetupEmail" class="text-xs font-bold text-slate-600"></p>
+        <label class="block">
+          <span class="block text-xs font-bold text-slate-700 mb-1">새 계정 암호 (10자 이상)</span>
+          <input id="gateInvitePasswordInput" type="password" autocomplete="new-password" minlength="10" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:ring-2 ring-theme-primary">
+        </label>
+        <label class="block">
+          <span class="block text-xs font-bold text-slate-700 mb-1">새 계정 암호 다시 입력</span>
+          <input id="gateInvitePasswordConfirmInput" type="password" autocomplete="new-password" minlength="10" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:ring-2 ring-theme-primary">
+        </label>
+        <button id="btnFinishInvitePasswordSetup" type="button" class="w-full bg-theme-primary text-white font-extrabold py-3.5 rounded-2xl text-sm shadow-sm hover:opacity-95 transition">🔐 암호 저장하고 계속하기</button>
+        <p id="gatePasswordSetupStatus" class="hidden text-xs font-semibold rounded-xl p-3"></p>
+      </div>
+
       <!-- 2. 세션/링크 확인 중 -->
       <div id="gateCheckingView" class="hidden py-6 text-center space-y-2">
         <div class="text-3xl animate-pulse">🔐</div>
@@ -884,7 +903,7 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="app.js?v=24"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>
 
