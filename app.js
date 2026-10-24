@@ -31,11 +31,13 @@ let authSubscription = null;
 let isRemoteUpdating = false;
 let coupleCryptoKey = null;
 let currentMasterSecret = '';
-function isInviteAuthLink(locationLike) {
+function isAccountPasswordSetupLink(locationLike) {
   const locationValue = locationLike || window.location;
   const hashParams = new URLSearchParams(String(locationValue.hash || '').replace(/^#/, ''));
   const queryParams = new URLSearchParams(String(locationValue.search || '').replace(/^\?/, ''));
-  return hashParams.get('type') === 'invite' || queryParams.get('type') === 'invite';
+  const hashType = hashParams.get('type');
+  const queryType = queryParams.get('type');
+  return hashType === 'invite' || hashType === 'recovery' || queryType === 'invite' || queryType === 'recovery';
 }
 
 async function updateInvitedAccountPassword(client, password, confirmation) {
@@ -50,7 +52,61 @@ async function updateInvitedAccountPassword(client, password, confirmation) {
   return { ok: true, user: (data && data.user) || null };
 }
 
-async function finishInvitePasswordSetup() {
+async function requestAccountPasswordReset(client, email, redirectTo) {
+  const cleanEmail = String(email || '').trim();
+  if (!cleanEmail) return { ok: false, reason: 'email_required' };
+  if (!client || !client.auth || typeof client.auth.resetPasswordForEmail !== 'function') {
+    return { ok: false, reason: 'auth_unavailable' };
+  }
+  const { error } = await client.auth.resetPasswordForEmail(cleanEmail, { redirectTo: redirectTo });
+  if (error) return { ok: false, reason: 'request_failed', error: error };
+  return { ok: true };
+}
+
+async function sendAccountPasswordReset() {
+  const emailInput = document.getElementById('gateEmailInput');
+  const gateMsg = document.getElementById('gateStatusMessage');
+  const email = String((emailInput && emailInput.value) || '').trim();
+  const showGateMessage = function(message, success) {
+    if (!gateMsg) return;
+    gateMsg.textContent = message;
+    gateMsg.className = success
+      ? 'text-xs font-semibold rounded-xl p-3 bg-emerald-50 text-emerald-700 border border-emerald-200'
+      : 'text-xs font-semibold rounded-xl p-3 bg-rose-50 text-rose-700 border border-rose-200';
+    gateMsg.classList.remove('hidden');
+  };
+
+  if (!supabaseClient) await initSupabase(state.supabaseUrl, state.supabaseKey, false);
+  if (!supabaseClient) {
+    showGateMessage('로그인 서버에 연결할 수 없어요. 인터넷 연결을 확인해 주세요.', false);
+    return false;
+  }
+
+  try {
+    const result = await requestAccountPasswordReset(
+      supabaseClient,
+      email,
+      window.location.origin + window.location.pathname
+    );
+    if (!result.ok) {
+      const messages = {
+        email_required: '먼저 이메일 주소를 입력해 주세요.',
+        auth_unavailable: '로그인 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요.',
+        request_failed: '재설정 메일을 보내지 못했어요. 이메일 주소와 메일 발송 제한을 확인해 주세요.'
+      };
+      showGateMessage(messages[result.reason] || '재설정 메일을 보내지 못했어요.', false);
+      return false;
+    }
+    showGateMessage('재설정 링크를 요청했어요. 받은 메일을 열고 새 암호를 정해 주세요.', true);
+    return true;
+  } catch (error) {
+    console.warn('Account password reset request failed:', error);
+    showGateMessage('재설정 메일 요청 중 오류가 났어요. 잠시 뒤 다시 시도해 주세요.', false);
+    return false;
+  }
+}
+
+async function finishAccountPasswordSetup() {
   const passwordInput = document.getElementById('gateInvitePasswordInput');
   const confirmInput = document.getElementById('gateInvitePasswordConfirmInput');
   const status = document.getElementById('gatePasswordSetupStatus');
@@ -86,7 +142,7 @@ async function finishInvitePasswordSetup() {
 
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
-    pendingInvitePasswordSetup = false;
+    pendingAccountPasswordSetup = false;
     window.history.replaceState({}, document.title, window.location.origin + window.location.pathname + window.location.search);
     showToast('계정 암호를 저장했어요. 부부 등록 상태를 확인할게요.');
     return await verifyMemberAndSync(result.user || authState.user, true, '');
@@ -97,7 +153,7 @@ async function finishInvitePasswordSetup() {
   }
 }
 
-let pendingInvitePasswordSetup = isInviteAuthLink(window.location);
+let pendingAccountPasswordSetup = isAccountPasswordSetupLink(window.location);
 let remoteSnapshotIds = { events: new Set(), todos: new Set(), diaries: new Set() };
 let authState = {
   status: 'signed_out', // 'offline' | 'signed_out' | 'checking' | 'unauthorized' | 'authorized' | 'error'
@@ -743,7 +799,7 @@ async function initSupabase(url, key, isManual = false) {
       if (isManual) showToast('이메일과 Supabase 계정 암호로 먼저 로그인해 주세요 🔒');
       return true;
     }
-    if (pendingInvitePasswordSetup) {
+    if (pendingAccountPasswordSetup) {
       authState = {
         status: 'password_setup',
         user: authUser,
@@ -3433,16 +3489,20 @@ function setupEventListeners() {
   if (btnGateSignIn) {
     btnGateSignIn.addEventListener('click', signInCoupleAccount);
   }
+  const btnGatePasswordReset = document.getElementById('btnGatePasswordReset');
+  if (btnGatePasswordReset) {
+    btnGatePasswordReset.addEventListener('click', sendAccountPasswordReset);
+  }
   const btnFinishInvitePassword = document.getElementById('btnFinishInvitePasswordSetup');
   if (btnFinishInvitePassword) {
-    btnFinishInvitePassword.addEventListener('click', finishInvitePasswordSetup);
+    btnFinishInvitePassword.addEventListener('click', finishAccountPasswordSetup);
   }
   const invitePasswordConfirm = document.getElementById('gateInvitePasswordConfirmInput');
   if (invitePasswordConfirm) {
     invitePasswordConfirm.addEventListener('keydown', function(event) {
       if (event.key === 'Enter') {
         event.preventDefault();
-        finishInvitePasswordSetup();
+        finishAccountPasswordSetup();
       }
     });
   }
