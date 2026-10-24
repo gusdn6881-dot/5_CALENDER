@@ -31,6 +31,73 @@ let authSubscription = null;
 let isRemoteUpdating = false;
 let coupleCryptoKey = null;
 let currentMasterSecret = '';
+function isInviteAuthLink(locationLike) {
+  const locationValue = locationLike || window.location;
+  const hashParams = new URLSearchParams(String(locationValue.hash || '').replace(/^#/, ''));
+  const queryParams = new URLSearchParams(String(locationValue.search || '').replace(/^\?/, ''));
+  return hashParams.get('type') === 'invite' || queryParams.get('type') === 'invite';
+}
+
+async function updateInvitedAccountPassword(client, password, confirmation) {
+  const cleanPassword = String(password || '');
+  if (cleanPassword.length < 10) return { ok: false, reason: 'password_too_short' };
+  if (cleanPassword !== String(confirmation || '')) return { ok: false, reason: 'password_mismatch' };
+  if (!client || !client.auth || typeof client.auth.updateUser !== 'function') {
+    return { ok: false, reason: 'auth_unavailable' };
+  }
+  const { data, error } = await client.auth.updateUser({ password: cleanPassword });
+  if (error) return { ok: false, reason: 'update_failed', error: error };
+  return { ok: true, user: (data && data.user) || null };
+}
+
+async function finishInvitePasswordSetup() {
+  const passwordInput = document.getElementById('gateInvitePasswordInput');
+  const confirmInput = document.getElementById('gateInvitePasswordConfirmInput');
+  const status = document.getElementById('gatePasswordSetupStatus');
+  const showMessage = function(message, success) {
+    if (!status) return;
+    status.textContent = message;
+    status.className = success
+      ? 'text-xs font-semibold rounded-xl p-3 bg-emerald-50 text-emerald-700 border border-emerald-200'
+      : 'text-xs font-semibold rounded-xl p-3 bg-rose-50 text-rose-700 border border-rose-200';
+    status.classList.remove('hidden');
+  };
+  if (authState.status !== 'password_setup' || !authState.user) {
+    showMessage('초대 링크를 다시 열어 주세요. 링크가 만료되었을 수 있어요.', false);
+    return false;
+  }
+
+  try {
+    const result = await updateInvitedAccountPassword(
+      supabaseClient,
+      passwordInput ? passwordInput.value : '',
+      confirmInput ? confirmInput.value : ''
+    );
+    if (!result.ok) {
+      const messages = {
+        password_too_short: '계정 암호는 10자 이상으로 정해 주세요.',
+        password_mismatch: '두 암호가 서로 달라요. 다시 확인해 주세요.',
+        auth_unavailable: '로그인 연결이 만료됐어요. 초대 메일 링크를 다시 열어 주세요.',
+        update_failed: '암호 저장에 실패했어요. 초대 링크가 만료되지 않았는지 확인해 주세요.'
+      };
+      showMessage(messages[result.reason] || '암호를 저장하지 못했어요. 다시 시도해 주세요.', false);
+      return false;
+    }
+
+    if (passwordInput) passwordInput.value = '';
+    if (confirmInput) confirmInput.value = '';
+    pendingInvitePasswordSetup = false;
+    window.history.replaceState({}, document.title, window.location.origin + window.location.pathname + window.location.search);
+    showToast('계정 암호를 저장했어요. 부부 등록 상태를 확인할게요.');
+    return await verifyMemberAndSync(result.user || authState.user, true, '');
+  } catch (error) {
+    console.warn('Invite account password update failed:', error);
+    showMessage('암호 저장 중 오류가 났어요. 초대 링크를 다시 열어 시도해 주세요.', false);
+    return false;
+  }
+}
+
+let pendingInvitePasswordSetup = isInviteAuthLink(window.location);
 let remoteSnapshotIds = { events: new Set(), todos: new Set(), diaries: new Set() };
 let authState = {
   status: 'signed_out', // 'offline' | 'signed_out' | 'checking' | 'unauthorized' | 'authorized' | 'error'
@@ -502,6 +569,7 @@ function renderAuthUiState() {
   const gateSignedOut = document.getElementById('gateSignedOutView');
   const gateChecking = document.getElementById('gateCheckingView');
   const gateUnauth = document.getElementById('gateUnauthorizedView');
+  const gatePasswordSetup = document.getElementById('gatePasswordSetupView');
   const mainEl = document.querySelector('main');
   const navEl = document.querySelector('nav');
   const fabEl = document.getElementById('btnOpenAddModal');
@@ -514,9 +582,10 @@ function renderAuthUiState() {
   const userIdDisplay = document.getElementById('authUserIdDisplay');
   const gateUserIdBox = document.getElementById('gateUserIdBox');
   const gateUnauthEmail = document.getElementById('gateUnauthEmail');
+  const gatePasswordSetupEmail = document.getElementById('gatePasswordSetupEmail');
 
   const hasSupabaseConfig = !!(state.supabaseUrl && state.supabaseKey);
-  const shouldLockScreen = hasSupabaseConfig && (authState.status === 'signed_out' || authState.status === 'checking' || authState.status === 'needs_vault_passcode' || authState.status === 'unauthorized' || authState.status === 'error');
+  const shouldLockScreen = hasSupabaseConfig && (authState.status === 'signed_out' || authState.status === 'checking' || authState.status === 'password_setup' || authState.status === 'needs_vault_passcode' || authState.status === 'unauthorized' || authState.status === 'error');
 
   if (gate) {
     gate.classList.toggle('hidden', !shouldLockScreen);
@@ -533,6 +602,7 @@ function renderAuthUiState() {
   if (gateSignedOut) gateSignedOut.classList.toggle('hidden', authState.status !== 'signed_out' && authState.status !== 'needs_vault_passcode' && authState.status !== 'error');
   if (gateChecking) gateChecking.classList.toggle('hidden', authState.status !== 'checking');
   if (gateUnauth) gateUnauth.classList.toggle('hidden', authState.status !== 'unauthorized');
+  if (gatePasswordSetup) gatePasswordSetup.classList.toggle('hidden', authState.status !== 'password_setup');
 
   if (!hasSupabaseConfig || authState.status === 'offline') {
     updateSupabaseBadge('offline', '⚪ 오프라인 보관 모드', 'bg-slate-100 text-slate-500 border border-slate-200');
@@ -540,6 +610,7 @@ function renderAuthUiState() {
     if (emailFormWrap) emailFormWrap.classList.remove('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
+    if (gatePasswordSetup) gatePasswordSetup.classList.add('hidden');
     if (signOutBtn) signOutBtn.classList.add('hidden');
     renderSyncRetryBanner();
     return;
@@ -548,6 +619,14 @@ function renderAuthUiState() {
   if (authState.status === 'checking') {
     updateSupabaseBadge('checking', '🟡 부부 인증 확인 중', 'bg-amber-50 text-amber-700 border border-amber-200');
     if (summaryEl) summaryEl.textContent = 'Supabase 계정과 부부 허용 목록을 확인하고 있어요...';
+    if (emailFormWrap) emailFormWrap.classList.add('hidden');
+    if (unregWrap) unregWrap.classList.add('hidden');
+    if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
+    if (signOutBtn) signOutBtn.classList.add('hidden');
+  } else if (authState.status === 'password_setup') {
+    updateSupabaseBadge('checking', '✉️ 초대 계정 설정', 'bg-indigo-50 text-indigo-700 border border-indigo-200');
+    if (summaryEl) summaryEl.textContent = '초대를 확인했어요. 사용할 계정 암호를 정해 주세요.';
+    if (gatePasswordSetupEmail) gatePasswordSetupEmail.textContent = '초대 이메일: ' + ((authState.user && authState.user.email) || '');
     if (emailFormWrap) emailFormWrap.classList.add('hidden');
     if (unregWrap) unregWrap.classList.add('hidden');
     if (memberActionsWrap) memberActionsWrap.classList.add('hidden');
@@ -662,6 +741,17 @@ async function initSupabase(url, key, isManual = false) {
       };
       renderAuthUiState();
       if (isManual) showToast('이메일과 Supabase 계정 암호로 먼저 로그인해 주세요 🔒');
+      return true;
+    }
+    if (pendingInvitePasswordSetup) {
+      authState = {
+        status: 'password_setup',
+        user: authUser,
+        member: null,
+        lastVerifiedSyncAt: null,
+        errorMessage: ''
+      };
+      renderAuthUiState();
       return true;
     }
     return await verifyMemberAndSync(authUser, isManual);
@@ -3342,6 +3432,19 @@ function setupEventListeners() {
   const btnGateSignIn = document.getElementById('btnGateSignIn');
   if (btnGateSignIn) {
     btnGateSignIn.addEventListener('click', signInCoupleAccount);
+  }
+  const btnFinishInvitePassword = document.getElementById('btnFinishInvitePasswordSetup');
+  if (btnFinishInvitePassword) {
+    btnFinishInvitePassword.addEventListener('click', finishInvitePasswordSetup);
+  }
+  const invitePasswordConfirm = document.getElementById('gateInvitePasswordConfirmInput');
+  if (invitePasswordConfirm) {
+    invitePasswordConfirm.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finishInvitePasswordSetup();
+      }
+    });
   }
   const accountPasswordField = document.getElementById('gateAccountPasswordInput');
   if (accountPasswordField) {
