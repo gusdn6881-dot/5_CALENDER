@@ -2319,6 +2319,7 @@ let state = {
   customStickers: JSON.parse(localStorage.getItem('cal_custom_stickers') || '[]'),
   stickerThemeId: localStorage.getItem('cal_sticker_theme') || 'ramjju',
   stickerSize: localStorage.getItem('cal_sticker_size') || 'lg',
+  stickerBgOpacity: localStorage.getItem('cal_sticker_bg_opacity') || '42',
   stickerStampMode: false,
   activeStampStickerId: 'ramjju_happy',
   modalType: 'event',
@@ -2695,7 +2696,7 @@ const STICKER_THEMES = [
   {
     id: 'ramjju',
     name: '람쭈와 갓생 다람쥐 테마',
-    author: '우리하루 오리지널 · 주간마다 귀여운 다람쥐가 달력을 꾸며줘요',
+    author: '우리하루 오리지널 · 귀여운 다람쥐들이 앱 배경을 포근하게 꾸며줘요',
     badge: '인기 테마',
     mascotId: 'ramjju_happy',
     stickerIds: ['ramjju_happy', 'ramjju_coffee', 'ramjju_love', 'ramjju_cheer', 'ramjju_eat', 'ramjju_sleep'],
@@ -2704,7 +2705,7 @@ const STICKER_THEMES = [
   {
     id: 'couple_bunny',
     name: '알콩달콩 토끼·다람쥐 신혼 테마',
-    author: '아기토끼와 다람쥐 부부 일러스트가 달력과 일기장을 채워줘요',
+    author: '아기토끼와 다람쥐 부부 일러스트가 앱 배경을 사랑스럽게 채워줘요',
     badge: '부부 추천',
     mascotId: 'couple_heart',
     stickerIds: ['couple_heart', 'bunny_love', 'ramjju_love', 'bunny_party', 'ramjju_coffee', 'ramjju_happy'],
@@ -2713,7 +2714,7 @@ const STICKER_THEMES = [
   {
     id: 'peach_bear',
     name: '말랑 복숭아 곰돌이 테마',
-    author: '따뜻하고 포근한 곰돌이와 다람쥐 친구들 일러스트 테마',
+    author: '따뜻하고 포근한 곰돌이와 다람쥐 친구들 배경 일러스트 테마',
     badge: '포근 감성',
     mascotId: 'bear_happy',
     stickerIds: ['bear_happy', 'bear_love', 'bear_coffee', 'ramjju_sleep', 'bunny_love'],
@@ -2722,7 +2723,7 @@ const STICKER_THEMES = [
   {
     id: 'custom_pack',
     name: '내 사진/짤 캐릭터 테마',
-    author: '아래에 추가한 내 사진 캐릭터들로 달력 전체를 자동 꾸며줘요',
+    author: '아래에 추가한 내 사진·캐릭터들로 앱 배경 전체를 자동 꾸며줘요',
     badge: '커스텀',
     mascotId: 'custom',
     stickerIds: [],
@@ -2730,8 +2731,8 @@ const STICKER_THEMES = [
   },
   {
     id: 'none',
-    name: '심플 기본 (캐릭터 없음)',
-    author: '캐릭터 일러스트 없이 깔끔한 달력으로만 표시해요',
+    name: '심플 기본 (배경 스티커 없음)',
+    author: '배경 캐릭터 일러스트 없이 깔끔한 기본 배경으로 표시해요',
     badge: '심플',
     mascotId: '',
     stickerIds: [],
@@ -2770,81 +2771,45 @@ function getActiveThemeMascotSrc() {
   return pool.length > 0 ? pool[0] : '';
 }
 
-// 🐿️ 수동으로 붙이지 않아도 선택된 스티커 테마가 달력 주간(행)마다 자연스럽게 캐릭터를 배치합니다
-function getAutoThemeStickerForDate(dateStr, dateNum, dayOfWeek, dayEvents, dayDiaries) {
-  const theme = getActiveStickerTheme();
-  if (!theme || theme.id === 'none') return '';
+// 🐿️ 달력 날짜 칸 안이 아니라 앱 배경(#stickerThemeBgLayer)에 캐릭터 월페이퍼 패턴을 렌더링합니다
+function renderStickerThemeBackground() {
+  const bgLayer = document.getElementById('stickerThemeBgLayer');
+  if (!bgLayer) return;
   const pool = getActiveThemeStickerPool();
-  if (pool.length === 0) return '';
+  const opacityVal = parseInt(state.stickerBgOpacity || '42', 10) / 100;
+  document.documentElement.style.setProperty('--sticker-bg-opacity', String(opacityVal));
+  const rangeEl = document.getElementById('rangeStickerBgOpacity');
+  if (rangeEl) rangeEl.value = state.stickerBgOpacity || '42';
 
-  const parts = String(dateStr).split('-').map(Number);
-  const year = parts[0] || state.currentYear;
-  const monthIdx = (parts[1] || (state.currentMonth + 1)) - 1;
-  const firstDayOffset = new Date(year, monthIdx, 1).getDay();
-  const lastDate = new Date(year, monthIdx + 1, 0).getDate();
-  const weekRow = Math.floor((firstDayOffset + dateNum - 1) / 7);
-
-  // 결혼기념일 당일에는 항상 사랑스러운 하트/커플 캐릭터 표시
-  if (state.anniversaryDate && dateStr.slice(5) === state.anniversaryDate.slice(5) && dateStr >= state.anniversaryDate) {
-    if (theme.id === 'couple_bunny') return resolveStickerSrc('couple_heart') || pool[0];
-    if (theme.id === 'peach_bear') return resolveStickerSrc('bear_love') || pool[0];
-    return resolveStickerSrc('ramjju_love') || pool[0];
+  if (pool.length === 0) {
+    document.body.classList.remove('has-sticker-bg');
+    bgLayer.innerHTML = '';
+    return;
   }
 
-  // 해당 주간(일~토)의 날짜 범위 계산 (람쭈 테마 스크린샷처럼 한 주에 1개씩 가장 잘 어울리는 자리에 자동 배치)
-  const weekStartDate = Math.max(1, dateNum - dayOfWeek);
-  const weekEndDate = Math.min(lastDate, dateNum + (6 - dayOfWeek));
-
-  // 1순위: 이번 주에 약속이나 일기가 있는 날 중 대표 날짜 1곳 선정
-  let targetDayInWeek = null;
-  for (let d = weekStartDate; d <= weekEndDate; d++) {
-    const dStr = year + '-' + String(monthIdx + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-    const hasEv = state.events.some(e => eventMatchesDate(e, dStr) && eventMatchesOwnerFilter(e));
-    const hasDi = state.diaries.some(di => di.date === dStr);
-    if (hasEv || hasDi) {
-      targetDayInWeek = d;
-      if ((d + weekRow) % 2 === 0) break;
-    }
-  }
-
-  // 2순위: 약속이 없는 주간에도 테마 일러스트처럼 대각선 지그재그 요일에 1개씩 자동 배치
-  if (targetDayInWeek === null) {
-    const preferredCols = [5, 2, 6, 3, 1, 4];
-    const prefDow = preferredCols[(weekRow + monthIdx) % preferredCols.length];
-    const candidateDate = (weekRow * 7) - firstDayOffset + prefDow + 1;
-    if (candidateDate >= 1 && candidateDate <= lastDate) {
-      targetDayInWeek = candidateDate;
-    } else {
-      targetDayInWeek = weekRow === 0 ? weekEndDate : weekStartDate;
-    }
-  }
-
-  if (dateNum !== targetDayInWeek) return '';
-
-  // 커스텀 테마면 내 사진 캐릭터들을 순서대로 순환 배치
-  if (theme.id === 'custom_pack') {
-    return pool[(weekRow + monthIdx) % pool.length];
-  }
-
-  // 약속 제목 키워드에 어울리는 표정이 있으면 스마트 매칭
-  const combinedText = dayEvents.map(e => e.title || '').join(' ') + ' ' + dayDiaries.map(d => d.content || '').join(' ');
-  if (/카페|커피|디저트|브런치|티타임|스타벅스/i.test(combinedText)) {
-    return resolveStickerSrc(theme.id === 'peach_bear' ? 'bear_coffee' : 'ramjju_coffee') || pool[weekRow % pool.length];
-  }
-  if (/외식|저녁|점심|맛집|고기|치킨|피자|술|식사|파티/i.test(combinedText)) {
-    return resolveStickerSrc(theme.id === 'couple_bunny' ? 'bunny_party' : 'ramjju_eat') || pool[weekRow % pool.length];
-  }
-  if (/사랑|데이트|기념일|생일|웨딩|하트|축하/i.test(combinedText)) {
-    return resolveStickerSrc(theme.id === 'couple_bunny' ? 'couple_heart' : (theme.id === 'peach_bear' ? 'bear_love' : 'ramjju_love')) || pool[weekRow % pool.length];
-  }
-  if (/운동|병원|약국|은행|공부|회의|갓생|청소|장보기/i.test(combinedText)) {
-    return resolveStickerSrc('ramjju_cheer') || pool[weekRow % pool.length];
-  }
-  if (/휴식|주말|휴가|꿀잠|호캉스|집콕/i.test(combinedText)) {
-    return resolveStickerSrc('ramjju_sleep') || pool[weekRow % pool.length];
-  }
-
-  return pool[(weekRow + monthIdx) % pool.length];
+  document.body.classList.add('has-sticker-bg');
+  const sizePx = state.stickerSize === 'sm' ? 48 : (state.stickerSize === 'md' ? 64 : 82);
+  const spots = [
+    { top: '9%', left: '5%', rot: -10 },
+    { top: '11%', left: '44%', rot: 6 },
+    { top: '8%', left: '80%', rot: 11 },
+    { top: '23%', left: '18%', rot: 8 },
+    { top: '25%', left: '68%', rot: -9 },
+    { top: '38%', left: '4%', rot: -7 },
+    { top: '40%', left: '46%', rot: 5 },
+    { top: '37%', left: '82%', rot: -11 },
+    { top: '54%', left: '20%', rot: 9 },
+    { top: '56%', left: '70%', rot: -6 },
+    { top: '70%', left: '6%', rot: 8 },
+    { top: '72%', left: '45%', rot: -8 },
+    { top: '69%', left: '81%', rot: 10 },
+    { top: '85%', left: '22%', rot: -7 },
+    { top: '86%', left: '68%', rot: 7 }
+  ];
+  bgLayer.innerHTML = spots.map(function(sp, idx) {
+    const src = pool[idx % pool.length];
+    return '<img src="' + src + '" alt="" style="position:absolute;top:' + sp.top + ';left:' + sp.left + ';width:' + sizePx + 'px;height:' + sizePx + 'px;transform:rotate(' + sp.rot + 'deg);" class="object-contain select-none pointer-events-none drop-shadow-xs">';
+  }).join('');
 }
 
 function saveDayStickers() {
@@ -2873,6 +2838,9 @@ function renderStickerUiEverywhere() {
     btn.className = 'sticker-size-btn px-2.5 py-1 rounded-lg text-xs font-bold border transition ' +
       (on ? 'bg-theme-primary text-white border-theme-primary' : 'bg-white text-slate-600 border-slate-200');
   });
+
+  // 배경 스티커 월페이퍼 업데이트
+  renderStickerThemeBackground();
 
   // 상단 헤더 마스코트 배지 업데이트
   const headerMascot = document.getElementById('headerThemeMascot');
@@ -3302,22 +3270,6 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
   }
   cell.appendChild(chipWrap);
 
-  // 🐿️ 캐릭터 스티커 테마 자동 렌더링 (수동 도장이 아니라 테마가 주간·일정에 맞춰 자동 장식)
-  const stickerSrc = getAutoThemeStickerForDate(dateStr, dateNum, dayOfWeek, dayEvents, dayDiaries);
-  if (stickerSrc) {
-    const sizePx = state.stickerSize === 'sm' ? '26px' : (state.stickerSize === 'md' ? '34px' : '42px');
-    const stickerWrap = document.createElement('div');
-    stickerWrap.className = 'mt-auto pt-0.5 flex items-center justify-center pointer-events-none select-none';
-    const stickerImg = document.createElement('img');
-    stickerImg.src = stickerSrc;
-    stickerImg.alt = '';
-    stickerImg.style.width = sizePx;
-    stickerImg.style.height = sizePx;
-    stickerImg.className = 'object-contain drop-shadow-sm transition-transform';
-    stickerWrap.appendChild(stickerImg);
-    cell.appendChild(stickerWrap);
-  }
-
   cell.addEventListener('click', () => {
     if (Date.now() - state.lastSwipe < 400) return;
     state.selectedDate = dateStr;
@@ -3628,6 +3580,14 @@ function setupEventListeners() {
       renderCalendar();
     });
   });
+  const rangeStickerBg = document.getElementById('rangeStickerBgOpacity');
+  if (rangeStickerBg) {
+    rangeStickerBg.addEventListener('input', function(e) {
+      state.stickerBgOpacity = e.target.value;
+      localStorage.setItem('cal_sticker_bg_opacity', state.stickerBgOpacity);
+      renderStickerThemeBackground();
+    });
+  }
   const inputCustomSt = document.getElementById('inputCustomStickerFile');
   if (inputCustomSt) {
     inputCustomSt.addEventListener('change', async function(e) {
