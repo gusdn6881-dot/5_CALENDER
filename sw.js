@@ -1,10 +1,10 @@
-const CACHE_NAME = 'couple-cal-v27';
+const CACHE_NAME = 'couple-cal-v28';
 const ASSETS = [
   './',
   './index.html',
-  './app.js?v=27',
-  './push-config.js?v=27',
-  './push-reminders.js?v=27',
+  './app.js?v=28',
+  './push-config.js?v=28',
+  './push-reminders.js?v=28',
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
@@ -55,4 +55,5 @@ self.addEventListener('notificationclick', (e) => {
     return self.clients.openWindow(appUrl);
   }));
 });
+
 
