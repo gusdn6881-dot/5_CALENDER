@@ -2317,6 +2317,7 @@ let state = {
   diaries: JSON.parse(localStorage.getItem('cal_diaries') || '[]'),
   dayStickers: JSON.parse(localStorage.getItem('cal_day_stickers') || '{}'),
   customStickers: JSON.parse(localStorage.getItem('cal_custom_stickers') || '[]'),
+  stickerThemeId: localStorage.getItem('cal_sticker_theme') || 'ramjju',
   stickerSize: localStorage.getItem('cal_sticker_size') || 'lg',
   stickerStampMode: false,
   activeStampStickerId: 'ramjju_happy',
@@ -2641,6 +2642,100 @@ const DEFAULT_CHARACTER_STICKERS = [
       '<circle cx="47" cy="70" r="14" fill="#FBBF24" stroke="#4A2C11" stroke-width="3"/>' +
       '<text x="41" y="75" font-size="15" font-weight="900" fill="#78350F">₩</text>'
     )
+  },
+  {
+    id: 'bear_happy',
+    name: '말랑 곰돌이',
+    src: makeSvgStickerDataUri(
+      '<circle cx="28" cy="26" r="11" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<circle cx="28" cy="26" r="5.5" fill="#F5CBA7"/>' +
+      '<circle cx="68" cy="26" r="11" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<circle cx="68" cy="26" r="5.5" fill="#F5CBA7"/>' +
+      '<ellipse cx="48" cy="71" rx="21" ry="15" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<ellipse cx="48" cy="49" rx="27" ry="22" fill="#E6B288" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<ellipse cx="48" cy="54" rx="10" ry="7.5" fill="#FFF5EB" stroke="#4A2C11" stroke-width="2.4"/>' +
+      '<ellipse cx="28" cy="54" rx="6" ry="4" fill="#FF8FA3" opacity="0.8"/>' +
+      '<ellipse cx="68" cy="54" rx="6" ry="4" fill="#FF8FA3" opacity="0.8"/>' +
+      '<circle cx="37" cy="45" r="3.4" fill="#2D1808"/><circle cx="59" cy="45" r="3.4" fill="#2D1808"/>' +
+      '<ellipse cx="48" cy="51" rx="3.5" ry="2.5" fill="#4A2C11"/>' +
+      '<path d="M44 55 Q48 59 52 55" fill="none" stroke="#4A2C11" stroke-width="2.6" stroke-linecap="round"/>'
+    )
+  },
+  {
+    id: 'bear_love',
+    name: '하트 곰돌이',
+    src: makeSvgStickerDataUri(
+      '<circle cx="28" cy="27" r="11" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<circle cx="68" cy="27" r="11" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<ellipse cx="48" cy="51" rx="27" ry="22" fill="#E6B288" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<ellipse cx="48" cy="56" rx="10" ry="7.5" fill="#FFF5EB" stroke="#4A2C11" stroke-width="2.4"/>' +
+      '<path d="M33 45 Q37 40 41 45" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M55 45 Q59 40 63 45" fill="none" stroke="#4A2C11" stroke-width="3" stroke-linecap="round"/>' +
+      '<ellipse cx="48" cy="53" rx="3.2" ry="2.3" fill="#4A2C11"/>' +
+      '<path d="M48 67 C43 59 31 61 35 71 C38 76 48 81 48 81 C48 81 58 76 61 71 C65 61 53 59 48 67 Z" fill="#FF477E" stroke="#4A2C11" stroke-width="2.5"/>'
+    )
+  },
+  {
+    id: 'bear_coffee',
+    name: '라떼 곰돌이',
+    src: makeSvgStickerDataUri(
+      '<circle cx="28" cy="26" r="11" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<circle cx="68" cy="26" r="11" fill="#D9A074" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<ellipse cx="48" cy="49" rx="27" ry="22" fill="#E6B288" stroke="#4A2C11" stroke-width="3.4"/>' +
+      '<ellipse cx="48" cy="54" rx="10" ry="7" fill="#FFF5EB" stroke="#4A2C11" stroke-width="2.4"/>' +
+      '<circle cx="37" cy="45" r="3.4" fill="#2D1808"/><circle cx="59" cy="45" r="3.4" fill="#2D1808"/>' +
+      '<ellipse cx="48" cy="51" rx="3.2" ry="2.2" fill="#4A2C11"/>' +
+      '<rect x="37" y="59" width="22" height="21" rx="5" fill="#FFF" stroke="#4A2C11" stroke-width="3"/>' +
+      '<rect x="37" y="66" width="22" height="7" fill="#B45309"/>'
+    )
+  }
+];
+
+const STICKER_THEMES = [
+  {
+    id: 'ramjju',
+    name: '람쭈와 갓생 다람쥐 테마',
+    author: '우리하루 오리지널 · 주간마다 귀여운 다람쥐가 달력을 꾸며줘요',
+    badge: '인기 테마',
+    mascotId: 'ramjju_happy',
+    stickerIds: ['ramjju_happy', 'ramjju_coffee', 'ramjju_love', 'ramjju_cheer', 'ramjju_eat', 'ramjju_sleep'],
+    previewIds: ['ramjju_happy', 'ramjju_coffee', 'ramjju_love', 'ramjju_cheer']
+  },
+  {
+    id: 'couple_bunny',
+    name: '알콩달콩 토끼·다람쥐 신혼 테마',
+    author: '아기토끼와 다람쥐 부부 일러스트가 달력과 일기장을 채워줘요',
+    badge: '부부 추천',
+    mascotId: 'couple_heart',
+    stickerIds: ['couple_heart', 'bunny_love', 'ramjju_love', 'bunny_party', 'ramjju_coffee', 'ramjju_happy'],
+    previewIds: ['couple_heart', 'bunny_love', 'ramjju_love', 'bunny_party']
+  },
+  {
+    id: 'peach_bear',
+    name: '말랑 복숭아 곰돌이 테마',
+    author: '따뜻하고 포근한 곰돌이와 다람쥐 친구들 일러스트 테마',
+    badge: '포근 감성',
+    mascotId: 'bear_happy',
+    stickerIds: ['bear_happy', 'bear_love', 'bear_coffee', 'ramjju_sleep', 'bunny_love'],
+    previewIds: ['bear_happy', 'bear_love', 'bear_coffee', 'ramjju_sleep']
+  },
+  {
+    id: 'custom_pack',
+    name: '내 사진/짤 캐릭터 테마',
+    author: '아래에 추가한 내 사진 캐릭터들로 달력 전체를 자동 꾸며줘요',
+    badge: '커스텀',
+    mascotId: 'custom',
+    stickerIds: [],
+    previewIds: []
+  },
+  {
+    id: 'none',
+    name: '심플 기본 (캐릭터 없음)',
+    author: '캐릭터 일러스트 없이 깔끔한 달력으로만 표시해요',
+    badge: '심플',
+    mascotId: '',
+    stickerIds: [],
+    previewIds: []
   }
 ];
 
@@ -2654,6 +2749,102 @@ function resolveStickerSrc(stickerValue) {
   if (String(stickerValue).startsWith('data:image/')) return stickerValue;
   const found = getAllAvailableStickers().find(s => s.id === stickerValue);
   return found ? found.src : '';
+}
+
+function getActiveStickerTheme() {
+  return STICKER_THEMES.find(t => t.id === state.stickerThemeId) || STICKER_THEMES[0];
+}
+
+function getActiveThemeStickerPool() {
+  const theme = getActiveStickerTheme();
+  if (!theme || theme.id === 'none') return [];
+  if (theme.id === 'custom_pack') {
+    const customs = Array.isArray(state.customStickers) ? state.customStickers : [];
+    return customs.length > 0 ? customs.map(c => c.src) : [resolveStickerSrc('ramjju_happy')];
+  }
+  return (theme.stickerIds || []).map(id => resolveStickerSrc(id)).filter(Boolean);
+}
+
+function getActiveThemeMascotSrc() {
+  const pool = getActiveThemeStickerPool();
+  return pool.length > 0 ? pool[0] : '';
+}
+
+// 🐿️ 수동으로 붙이지 않아도 선택된 스티커 테마가 달력 주간(행)마다 자연스럽게 캐릭터를 배치합니다
+function getAutoThemeStickerForDate(dateStr, dateNum, dayOfWeek, dayEvents, dayDiaries) {
+  const theme = getActiveStickerTheme();
+  if (!theme || theme.id === 'none') return '';
+  const pool = getActiveThemeStickerPool();
+  if (pool.length === 0) return '';
+
+  const parts = String(dateStr).split('-').map(Number);
+  const year = parts[0] || state.currentYear;
+  const monthIdx = (parts[1] || (state.currentMonth + 1)) - 1;
+  const firstDayOffset = new Date(year, monthIdx, 1).getDay();
+  const lastDate = new Date(year, monthIdx + 1, 0).getDate();
+  const weekRow = Math.floor((firstDayOffset + dateNum - 1) / 7);
+
+  // 결혼기념일 당일에는 항상 사랑스러운 하트/커플 캐릭터 표시
+  if (state.anniversaryDate && dateStr.slice(5) === state.anniversaryDate.slice(5) && dateStr >= state.anniversaryDate) {
+    if (theme.id === 'couple_bunny') return resolveStickerSrc('couple_heart') || pool[0];
+    if (theme.id === 'peach_bear') return resolveStickerSrc('bear_love') || pool[0];
+    return resolveStickerSrc('ramjju_love') || pool[0];
+  }
+
+  // 해당 주간(일~토)의 날짜 범위 계산 (람쭈 테마 스크린샷처럼 한 주에 1개씩 가장 잘 어울리는 자리에 자동 배치)
+  const weekStartDate = Math.max(1, dateNum - dayOfWeek);
+  const weekEndDate = Math.min(lastDate, dateNum + (6 - dayOfWeek));
+
+  // 1순위: 이번 주에 약속이나 일기가 있는 날 중 대표 날짜 1곳 선정
+  let targetDayInWeek = null;
+  for (let d = weekStartDate; d <= weekEndDate; d++) {
+    const dStr = year + '-' + String(monthIdx + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    const hasEv = state.events.some(e => eventMatchesDate(e, dStr) && eventMatchesOwnerFilter(e));
+    const hasDi = state.diaries.some(di => di.date === dStr);
+    if (hasEv || hasDi) {
+      targetDayInWeek = d;
+      if ((d + weekRow) % 2 === 0) break;
+    }
+  }
+
+  // 2순위: 약속이 없는 주간에도 테마 일러스트처럼 대각선 지그재그 요일에 1개씩 자동 배치
+  if (targetDayInWeek === null) {
+    const preferredCols = [5, 2, 6, 3, 1, 4];
+    const prefDow = preferredCols[(weekRow + monthIdx) % preferredCols.length];
+    const candidateDate = (weekRow * 7) - firstDayOffset + prefDow + 1;
+    if (candidateDate >= 1 && candidateDate <= lastDate) {
+      targetDayInWeek = candidateDate;
+    } else {
+      targetDayInWeek = weekRow === 0 ? weekEndDate : weekStartDate;
+    }
+  }
+
+  if (dateNum !== targetDayInWeek) return '';
+
+  // 커스텀 테마면 내 사진 캐릭터들을 순서대로 순환 배치
+  if (theme.id === 'custom_pack') {
+    return pool[(weekRow + monthIdx) % pool.length];
+  }
+
+  // 약속 제목 키워드에 어울리는 표정이 있으면 스마트 매칭
+  const combinedText = dayEvents.map(e => e.title || '').join(' ') + ' ' + dayDiaries.map(d => d.content || '').join(' ');
+  if (/카페|커피|디저트|브런치|티타임|스타벅스/i.test(combinedText)) {
+    return resolveStickerSrc(theme.id === 'peach_bear' ? 'bear_coffee' : 'ramjju_coffee') || pool[weekRow % pool.length];
+  }
+  if (/외식|저녁|점심|맛집|고기|치킨|피자|술|식사|파티/i.test(combinedText)) {
+    return resolveStickerSrc(theme.id === 'couple_bunny' ? 'bunny_party' : 'ramjju_eat') || pool[weekRow % pool.length];
+  }
+  if (/사랑|데이트|기념일|생일|웨딩|하트|축하/i.test(combinedText)) {
+    return resolveStickerSrc(theme.id === 'couple_bunny' ? 'couple_heart' : (theme.id === 'peach_bear' ? 'bear_love' : 'ramjju_love')) || pool[weekRow % pool.length];
+  }
+  if (/운동|병원|약국|은행|공부|회의|갓생|청소|장보기/i.test(combinedText)) {
+    return resolveStickerSrc('ramjju_cheer') || pool[weekRow % pool.length];
+  }
+  if (/휴식|주말|휴가|꿀잠|호캉스|집콕/i.test(combinedText)) {
+    return resolveStickerSrc('ramjju_sleep') || pool[weekRow % pool.length];
+  }
+
+  return pool[(weekRow + monthIdx) % pool.length];
 }
 
 function saveDayStickers() {
@@ -2671,37 +2862,11 @@ function saveCustomStickers() {
 }
 
 async function setDateSticker(dateStr, stickerIdOrNull) {
-  if (!state.dayStickers) state.dayStickers = {};
-  const recordId = '__sticker__' + dateStr;
-  if (!stickerIdOrNull) {
-    delete state.dayStickers[dateStr];
-    saveDayStickers();
-    renderCalendar();
-    renderSelectedDateView();
-    pushRemoteEvent('delete', { id: recordId, date: dateStr });
-    return;
-  }
-  const found = getAllAvailableStickers().find(s => s.id === stickerIdOrNull);
-  // 커스텀 스티커는 다른 기기에서도 바로 보이도록 이미지 Data URL 자체를 저장
-  const valueToStore = (found && String(found.id).startsWith('custom_')) ? found.src : stickerIdOrNull;
-  state.dayStickers[dateStr] = valueToStore;
-  saveDayStickers();
   renderCalendar();
   renderSelectedDateView();
-  pushRemoteEvent('insert', {
-    id: recordId,
-    title: valueToStore,
-    date: dateStr,
-    endDate: dateStr,
-    time: '',
-    owner: 'both',
-    repeat: 'none',
-    color: '#F59E0B'
-  });
 }
 
 function renderStickerUiEverywhere() {
-  const all = getAllAvailableStickers();
   const size = state.stickerSize || 'lg';
   document.querySelectorAll('.sticker-size-btn').forEach(btn => {
     const on = btn.dataset.size === size;
@@ -2709,50 +2874,88 @@ function renderStickerUiEverywhere() {
       (on ? 'bg-theme-primary text-white border-theme-primary' : 'bg-white text-slate-600 border-slate-200');
   });
 
-  // 1. 달력 상단 도장 팔레트
-  const stampBar = document.getElementById('calendarStickerStampBar');
-  const stampBtn = document.getElementById('btnToggleStickerStampMode');
-  const stampPalette = document.getElementById('calendarStickerStampPalette');
-  if (stampBar) {
-    stampBar.classList.toggle('hidden', !state.stickerStampMode);
-  }
-  if (stampBtn) {
-    stampBtn.className = state.stickerStampMode
-      ? 'whitespace-nowrap text-xs font-extrabold text-white bg-amber-500 border border-amber-500 px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition'
-      : 'whitespace-nowrap text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition';
-  }
-  if (stampPalette) {
-    const eraserActive = state.activeStampStickerId === '__eraser__';
-    const itemsHtml = all.map(s => {
-      const active = state.activeStampStickerId === s.id;
-      return '<button type="button" onclick="selectStampSticker(\'' + s.id + '\')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
-        (active ? 'bg-white border-amber-500 ring-2 ring-amber-400 scale-105' : 'bg-white/70 border-amber-200/70 hover:bg-white') + '">' +
-        '<img src="' + s.src + '" class="w-10 h-10 object-contain select-none pointer-events-none" alt="">' +
-        '<span class="text-[9px] font-bold text-slate-700 truncate max-w-[48px]">' + escapeHtml(s.name) + '</span>' +
-        '</button>';
-    }).join('');
-    const eraserHtml = '<button type="button" onclick="selectStampSticker(\'__eraser__\')" class="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 rounded-xl border transition ' +
-      (eraserActive ? 'bg-rose-500 text-white border-rose-500 ring-2 ring-rose-300' : 'bg-white/80 text-rose-600 border-rose-200') + '">' +
-      '<span class="text-xl leading-10">🧽</span><span class="text-[9px] font-bold">지우개</span></button>';
-    stampPalette.innerHTML = itemsHtml + eraserHtml;
+  // 상단 헤더 마스코트 배지 업데이트
+  const headerMascot = document.getElementById('headerThemeMascot');
+  const mascotSrc = getActiveThemeMascotSrc();
+  if (headerMascot) {
+    if (mascotSrc) {
+      headerMascot.src = mascotSrc;
+      headerMascot.classList.remove('hidden');
+    } else {
+      headerMascot.classList.add('hidden');
+    }
   }
 
-  // 2. 꾸미기 탭 스티커 카탈로그
-  const catalog = document.getElementById('settingsStickerCatalog');
-  if (catalog) {
-    catalog.innerHTML = all.map(s => {
-      const isCustom = String(s.id).startsWith('custom_');
-      const delBtn = isCustom
-        ? '<button type="button" onclick="deleteCustomSticker(\'' + s.id + '\', event)" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow">×</button>'
-        : '';
-      return '<div onclick="startStampWithSticker(\'' + s.id + '\')" class="relative cursor-pointer flex flex-col items-center p-2 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-amber-400 hover:bg-amber-50/40 transition active:scale-95">' +
-        delBtn +
-        '<img src="' + s.src + '" class="w-12 h-12 object-contain" alt="">' +
-        '<span class="text-[10px] font-bold text-slate-600 mt-1 truncate max-w-full">' + escapeHtml(s.name) + '</span>' +
-        '</div>';
+  // 1. 꾸미기 탭 캐릭터 스티커 테마 팩 목록 렌더링 (람쭈와 갓생 쭈고 스타일 테마 카드)
+  const packList = document.getElementById('stickerThemePackList');
+  if (packList) {
+    const customs = Array.isArray(state.customStickers) ? state.customStickers : [];
+    packList.innerHTML = STICKER_THEMES.map(theme => {
+      const isSelected = state.stickerThemeId === theme.id;
+      let previewImgs = [];
+      if (theme.id === 'custom_pack') {
+        previewImgs = customs.slice(0, 4).map(c => c.src);
+      } else {
+        previewImgs = (theme.previewIds || []).map(id => resolveStickerSrc(id)).filter(Boolean);
+      }
+      const previewHtml = previewImgs.length > 0
+        ? '<div class="flex items-center -space-x-1.5 flex-shrink-0">' +
+          previewImgs.map(src => '<img src="' + src + '" class="w-9 h-9 object-contain rounded-xl bg-amber-50/70 p-0.5 border border-amber-200/60 shadow-2xs" alt="">').join('') +
+          '</div>'
+        : '<div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-base flex-shrink-0">' + (theme.id === 'none' ? '✨' : '🖼️') + '</div>';
+      return '<button type="button" onclick="selectStickerTheme(\'' + theme.id + '\')" class="w-full text-left p-3 rounded-2xl border transition flex items-center justify-between gap-2.5 ' +
+        (isSelected ? 'bg-indigo-50/70 border-theme-primary ring-2 ring-theme-primary' : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/70') + '">' +
+        '<div class="flex items-center gap-3 min-w-0">' +
+          previewHtml +
+          '<div class="min-w-0">' +
+            '<div class="flex items-center gap-1.5">' +
+              '<span class="text-sm font-extrabold text-slate-800 truncate">' + escapeHtml(theme.name) + '</span>' +
+              '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ' + (isSelected ? 'bg-theme-primary text-white' : 'bg-slate-200/80 text-slate-600') + '">' + (isSelected ? '적용 중' : escapeHtml(theme.badge)) + '</span>' +
+            '</div>' +
+            '<p class="text-[11px] text-slate-500 truncate mt-0.5">' + escapeHtml(theme.author) + '</p>' +
+          '</div>' +
+        '</div>' +
+      '</button>';
     }).join('');
   }
+
+  // 2. 내 커스텀 캐릭터 목록
+  const catalog = document.getElementById('settingsStickerCatalog');
+  if (catalog) {
+    const customs = Array.isArray(state.customStickers) ? state.customStickers : [];
+    if (customs.length === 0) {
+      catalog.innerHTML = '<div class="col-span-4 py-3 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">위 [➕ 내 사진 캐릭터 추가]를 눌러 우리 부부 사진이나 좋아하는 캐릭터를 넣으면 테마처럼 달력을 자동 꾸며줘요!</div>';
+    } else {
+      catalog.innerHTML = customs.map(s => {
+        const delBtn = '<button type="button" onclick="deleteCustomSticker(\'' + s.id + '\', event)" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow">×</button>';
+        return '<div onclick="selectStickerTheme(\'custom_pack\')" class="relative cursor-pointer flex flex-col items-center p-2 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-amber-400 transition active:scale-95">' +
+          delBtn +
+          '<img src="' + s.src + '" class="w-12 h-12 object-contain" alt="">' +
+          '<span class="text-[10px] font-bold text-slate-600 mt-1 truncate max-w-full">' + escapeHtml(s.name) + '</span>' +
+          '</div>';
+      }).join('');
+    }
+  }
 }
+
+window.selectStickerTheme = function(themeId) {
+  if (themeId === 'custom_pack' && (!state.customStickers || state.customStickers.length === 0)) {
+    showToast('먼저 아래 [➕ 내 사진 캐릭터 추가]로 이미지를 1장 이상 올려주세요! 🖼️');
+    return;
+  }
+  state.stickerThemeId = themeId;
+  localStorage.setItem('cal_sticker_theme', themeId);
+  renderStickerUiEverywhere();
+  renderCalendar();
+  renderTodos();
+  renderAllDiaries();
+  const found = getActiveStickerTheme();
+  if (themeId === 'none') {
+    showToast('심플 기본 달력으로 변경했어요 ✨');
+  } else {
+    showToast('🐿️ [' + found.name + ']로 달력을 꾸몄어요!');
+  }
+};
 
 window.selectStampSticker = function(id) {
   state.activeStampStickerId = id;
@@ -2760,11 +2963,7 @@ window.selectStampSticker = function(id) {
 };
 
 window.startStampWithSticker = function(id) {
-  state.activeStampStickerId = id;
-  state.stickerStampMode = true;
-  switchTab('tabCalendar');
-  renderStickerUiEverywhere();
-  showToast('달력에서 날짜를 톡톡 눌러 스티커를 붙여보세요! 🐿️');
+  selectStickerTheme('custom_pack');
 };
 
 window.deleteCustomSticker = function(id, ev) {
@@ -3103,9 +3302,8 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
   }
   cell.appendChild(chipWrap);
 
-  // 🐿️ 날짜 칸 스티커 렌더링 (스크린샷처럼 날짜 칸 하단에 큼직하고 귀엽게 표시)
-  const rawSticker = state.dayStickers && state.dayStickers[dateStr];
-  const stickerSrc = resolveStickerSrc(rawSticker);
+  // 🐿️ 캐릭터 스티커 테마 자동 렌더링 (수동 도장이 아니라 테마가 주간·일정에 맞춰 자동 장식)
+  const stickerSrc = getAutoThemeStickerForDate(dateStr, dateNum, dayOfWeek, dayEvents, dayDiaries);
   if (stickerSrc) {
     const sizePx = state.stickerSize === 'sm' ? '26px' : (state.stickerSize === 'md' ? '34px' : '42px');
     const stickerWrap = document.createElement('div');
@@ -3122,19 +3320,6 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
 
   cell.addEventListener('click', () => {
     if (Date.now() - state.lastSwipe < 400) return;
-    if (state.stickerStampMode) {
-      state.selectedDate = dateStr;
-      if (state.activeStampStickerId === '__eraser__') {
-        setDateSticker(dateStr, null);
-      } else {
-        const currentVal = state.dayStickers && state.dayStickers[dateStr];
-        const activeObj = getAllAvailableStickers().find(s => s.id === state.activeStampStickerId);
-        const alreadySame = currentVal === state.activeStampStickerId || (activeObj && currentVal === activeObj.src);
-        if (alreadySame) setDateSticker(dateStr, null);
-        else setDateSticker(dateStr, state.activeStampStickerId);
-      }
-      return;
-    }
     state.selectedDate = dateStr;
     renderCalendar();
     renderSelectedDateView();
@@ -3162,30 +3347,16 @@ function renderSelectedDateView() {
 
   renderSelectedDateEventsList(dayEvents);
   renderSelectedDateDiaryBox(dayDiaries);
-
-  // 날짜 상세 시트의 스티커 선택 줄 렌더링
-  const dayStickerBox = document.getElementById('daySheetStickerList');
-  const btnRemSticker = document.getElementById('btnRemoveDaySticker');
-  const curVal = (state.dayStickers && state.dayStickers[state.selectedDate]) || '';
-  if (btnRemSticker) {
-    btnRemSticker.classList.toggle('hidden', !curVal);
-  }
-  if (dayStickerBox) {
-    dayStickerBox.innerHTML = getAllAvailableStickers().map(s => {
-      const selected = curVal === s.id || curVal === s.src;
-      return '<button type="button" onclick="pickDaySheetSticker(\'' + s.id + '\')" class="flex-shrink-0 flex flex-col items-center gap-0.5 p-1.5 rounded-xl border transition ' +
-        (selected ? 'bg-white border-amber-500 ring-2 ring-amber-400 scale-105' : 'bg-white/70 border-transparent hover:bg-white') + '">' +
-        '<img src="' + s.src + '" class="w-9 h-9 object-contain" alt="">' +
-        '<span class="text-[9px] font-bold text-slate-600 truncate max-w-[44px]">' + escapeHtml(s.name) + '</span>' +
-        '</button>';
-    }).join('');
-  }
 }
 
 function renderSelectedDateEventsList(events) {
   events = events.slice().sort(function(a, b) { return (a.time || '').localeCompare(b.time || ''); });
   if (events.length === 0) {
-    selectedDateEventsList.innerHTML = '<div class="py-3 text-center text-slate-400 text-sm"><div class="text-2xl mb-1">📭</div><p>아직 약속이 없어요.</p><p class="text-xs mt-0.5">위의 <b class="text-theme-primary">📅 약속</b>을 눌러 넣어 보세요.</p></div>';
+    const mascot = getActiveThemeMascotSrc();
+    const iconHtml = mascot
+      ? '<img src="' + mascot + '" class="w-11 h-11 mx-auto mb-1 object-contain drop-shadow-xs" alt="">'
+      : '<div class="text-2xl mb-1">📭</div>';
+    selectedDateEventsList.innerHTML = '<div class="py-3 text-center text-slate-400 text-sm">' + iconHtml + '<p>아직 약속이 없어요.</p><p class="text-xs mt-0.5">위의 <b class="text-theme-primary">📅 약속</b>을 눌러 넣어 보세요.</p></div>';
     return;
   }
   selectedDateEventsList.innerHTML = events.map(function(ev) {
@@ -3264,7 +3435,11 @@ function renderAllDiaries() {
   diaryCountBadge.textContent = list.length + '개 · 전체 ' + state.diaries.length + '개';
 
   if (list.length === 0) {
-    allDiaryContainer.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs"><i class="fa-regular fa-heart text-2xl mb-2 text-rose-300"></i><p>' + (query ? '검색 결과가 없습니다.' : '이 기간에 쓴 일기가 없습니다.') + '</p></div>';
+    const mascot = getActiveThemeMascotSrc();
+    const iconHtml = mascot
+      ? '<img src="' + mascot + '" class="w-12 h-12 mx-auto mb-2 object-contain drop-shadow-xs" alt="">'
+      : '<i class="fa-regular fa-heart text-2xl mb-2 text-rose-300"></i>';
+    allDiaryContainer.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs">' + iconHtml + '<p>' + (query ? '검색 결과가 없습니다.' : '이 기간에 쓴 일기가 없습니다.') + '</p></div>';
     return;
   }
 
@@ -3350,7 +3525,13 @@ function renderTodos() {
 
   todosListContainer.innerHTML = active.length
     ? active.map(todoRowHtml).join('')
-    : '<div class="py-6 text-center text-slate-400 text-xs"><i class="fa-regular fa-circle-check text-xl mb-1 text-slate-300"></i><p>남은 할 일이 없어요.</p></div>';
+    : (function() {
+        const mascot = getActiveThemeMascotSrc();
+        const iconHtml = mascot
+          ? '<img src="' + mascot + '" class="w-11 h-11 mx-auto mb-1.5 object-contain drop-shadow-xs" alt="">'
+          : '<i class="fa-regular fa-circle-check text-xl mb-1 text-slate-300"></i>';
+        return '<div class="py-6 text-center text-slate-400 text-xs">' + iconHtml + '<p>남은 할 일이 없어요.</p></div>';
+      })();
 
   const toggleBtn = document.getElementById('btnToggleCompletedTodos');
   const doneWrap = document.getElementById('completedTodosContainer');
@@ -3463,9 +3644,11 @@ function setupEventListeners() {
         if (!Array.isArray(state.customStickers)) state.customStickers = [];
         state.customStickers.push(newSt);
         saveCustomStickers();
-        state.activeStampStickerId = newSt.id;
+        state.stickerThemeId = 'custom_pack';
+        localStorage.setItem('cal_sticker_theme', 'custom_pack');
         renderStickerUiEverywhere();
-        showToast('내 사진 스티커가 추가되었어요! 달력에 붙여보세요 🎉');
+        renderCalendar();
+        showToast('내 사진 캐릭터 테마가 적용되었어요! 🎉');
       } catch (err) {
         showToast('스티커 이미지를 불러오지 못했어요 😥');
       }
@@ -4237,4 +4420,5 @@ function escapeHtml(str) {
 
 init();
 document.addEventListener('DOMContentLoaded', init);
+
 
