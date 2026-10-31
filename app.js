@@ -832,6 +832,42 @@ function renderAuthUiState() {
   renderSyncRetryBanner();
 }
 
+window.selectGateMemberRole = function(role) {
+  const cleanRole = role === 'wife' ? 'wife' : 'husband';
+  localStorage.setItem('cal_selected_gate_role', cleanRole);
+  const hBtn = document.getElementById('btnGateSelectHusband');
+  const wBtn = document.getElementById('btnGateSelectWife');
+  const hLabel = document.getElementById('gateRoleLabelHusband');
+  const wLabel = document.getElementById('gateRoleLabelWife');
+  if (hLabel && state && state.husbandName) hLabel.textContent = state.husbandName + ' 폰';
+  if (wLabel && state && state.wifeName) wLabel.textContent = state.wifeName + ' 폰';
+  if (hBtn) {
+    hBtn.className = 'py-2.5 px-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-1.5 transition ' +
+      (cleanRole === 'husband'
+        ? 'border-2 bg-blue-50 text-blue-700 border-blue-500 shadow-xs'
+        : 'border bg-slate-50 text-slate-500 border-slate-200');
+  }
+  if (wBtn) {
+    wBtn.className = 'py-2.5 px-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-1.5 transition ' +
+      (cleanRole === 'wife'
+        ? 'border-2 bg-rose-50 text-rose-600 border-rose-400 shadow-xs'
+        : 'border bg-slate-50 text-slate-500 border-slate-200');
+  }
+  const emailInput = document.getElementById('gateEmailInput');
+  if (emailInput && !emailInput.value.trim()) {
+    emailInput.value = 'gusdn6881@gmail.com';
+  }
+  const passLabel = document.getElementById('gatePasscodeLabel');
+  const targetName = cleanRole === 'wife' ? ((state && state.wifeName) || '김시문') : ((state && state.husbandName) || '강현우');
+  if (passLabel) {
+    passLabel.textContent = targetName + ' 님 전용 기록 암호 (본인이 쓸 짧은 암호)';
+  }
+  const signInBtn = document.getElementById('btnGateSignIn');
+  if (signInBtn) {
+    signInBtn.textContent = '🔐 ' + targetName + ' 폰으로 로그인하고 기록 열기';
+  }
+};
+
 async function initSupabase(url, key, isManual = false) {
   if (!url || !key || !window.supabase) {
     authState = { status: 'offline', user: null, member: null, lastVerifiedSyncAt: null, errorMessage: '' };
@@ -966,11 +1002,18 @@ async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode
       return false;
     }
 
-    authState.member = memberRow;
+    const selectedGateRole = localStorage.getItem('cal_selected_gate_role') || '';
+    const effectiveRole = (selectedGateRole === 'husband' || selectedGateRole === 'wife') ? selectedGateRole : memberRow.role;
+    const effectiveName = effectiveRole === 'wife'
+      ? ((typeof state !== 'undefined' && state.wifeName) ? state.wifeName : (memberRow.role === 'wife' ? memberRow.display_name : '김시문'))
+      : ((typeof state !== 'undefined' && state.husbandName) ? state.husbandName : (memberRow.role === 'husband' ? memberRow.display_name : '강현우'));
+    const activeMember = Object.assign({}, memberRow, { role: effectiveRole, display_name: effectiveName });
+
+    authState.member = activeMember;
     if (!coupleCryptoKey || String(rawVaultPasscode || '').trim()) {
       const saved = getSavedDeviceMember();
       let passcode = String(rawVaultPasscode || '').trim();
-      if (!passcode && !coupleCryptoKey && saved && saved.role === memberRow.role) passcode = saved.passcode;
+      if (!passcode && !coupleCryptoKey && saved && saved.role === activeMember.role) passcode = saved.passcode;
 
       const localMaster = coupleCryptoKey ? '' : (localStorage.getItem('cal_couple_master_secret') || '');
       if (localMaster) {
@@ -979,7 +1022,7 @@ async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode
       }
 
       if (passcode) {
-        const lockCheck = await verifyOrCreateRemoteCoupleLock(memberRow.role, passcode);
+        const lockCheck = await verifyOrCreateRemoteCoupleLock(activeMember.role, passcode);
         if (!lockCheck.ok) {
           if (lockCheck.reason === 'mismatch' && !rawVaultPasscode) {
             localStorage.removeItem('cal_couple_passcode');
@@ -990,11 +1033,11 @@ async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode
             currentMasterSecret = '';
           }
           authState.status = lockCheck.reason === 'mismatch' ? 'needs_vault_passcode' : 'error';
-          authState.errorMessage = remoteLockFailureMessage(lockCheck.reason, memberRow.display_name);
+          authState.errorMessage = remoteLockFailureMessage(lockCheck.reason, activeMember.display_name);
           renderAuthUiState();
           return false;
         }
-        localStorage.setItem('cal_device_role', memberRow.role);
+        localStorage.setItem('cal_device_role', activeMember.role);
         localStorage.removeItem('cal_couple_passcode');
       }
 
@@ -1006,7 +1049,7 @@ async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode
       }
     } else {
       const savedRole = localStorage.getItem('cal_device_role') || '';
-      if (savedRole && savedRole !== memberRow.role) {
+      if (savedRole && savedRole !== activeMember.role) {
         localStorage.removeItem('cal_couple_passcode');
         localStorage.removeItem('cal_device_role');
       }
@@ -1033,7 +1076,7 @@ async function verifyMemberAndSync(user, notifySuccess = false, rawVaultPasscode
     }
 
     if (notifySuccess) {
-      showToast('반가워요 ' + memberRow.display_name + ' 님! 부부 전용 연결 완료 💑');
+      showToast('반가워요 ' + activeMember.display_name + ' 님! 부부 전용 연결 완료 💑');
     }
 
     maybePromptInitialSync();
@@ -3119,6 +3162,10 @@ function init() {
   const gateEmailEl = document.getElementById('gateEmailInput');
   if (authEmailEl && savedEmail) authEmailEl.value = savedEmail;
   if (gateEmailEl && savedEmail) gateEmailEl.value = savedEmail;
+  const initGateRole = localStorage.getItem('cal_selected_gate_role') || localStorage.getItem('cal_device_role') || 'husband';
+  if (typeof window.selectGateMemberRole === 'function') {
+    window.selectGateMemberRole(initGateRole);
+  }
   renderAuthUiState();
   if (state.supabaseUrl && state.supabaseKey) {
     initSupabase(state.supabaseUrl, state.supabaseKey, false);
