@@ -2328,6 +2328,7 @@ let state = {
   diaryFilterYM: formatDate(new Date()).slice(0, 7),
   diarySearch: '',
   showCompletedTodos: false,
+  showAllFutureTodos: false,
   supabaseUrl: localStorage.getItem('cal_supabase_mode') === 'offline' ? '' : (localStorage.getItem('cal_supabase_url') || DEFAULT_SUPABASE_URL),
   supabaseKey: localStorage.getItem('cal_supabase_mode') === 'offline' ? '' : (localStorage.getItem('cal_supabase_key') || DEFAULT_SUPABASE_KEY),
   husbandName: localStorage.getItem('cal_name_husband') || '강현우',
@@ -3460,20 +3461,67 @@ function renderMediaHtml(mediaList, maxCount = 4) {
   `;
 }
 
+function getTodoDiffDays(dueDateStr) {
+  const clean = String(dueDateStr || '').slice(0, 10);
+  const parts = clean.split('-').map(Number);
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return 0;
+  const targetMidnight = new Date(parts[0], parts[1] - 1, parts[2]);
+  return Math.round((targetMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
+}
+
+function formatTodoShortDate(dueDateStr) {
+  const parts = String(dueDateStr || '').slice(0, 10).split('-').map(Number);
+  if (parts.length !== 3 || !parts[1] || !parts[2]) return '';
+  return parts[1] + '/' + parts[2];
+}
+
+function todoDdayBadgeHtml(todo) {
+  const due = todo.dueDate || formatDate(new Date());
+  const shortMd = formatTodoShortDate(due);
+  if (todo.isCompleted) {
+    return '<span class="whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 border border-slate-200">' + (shortMd ? shortMd + ' · 완료' : '완료') + '</span>';
+  }
+  const diff = getTodoDiffDays(due);
+  if (diff === 0) {
+    return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">D-Day · 오늘</span>';
+  }
+  if (diff === 1) {
+    return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">D-1 · 내일</span>';
+  }
+  if (diff > 1 && diff <= 7) {
+    return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 text-theme-primary border border-indigo-200">D-' + diff + (shortMd ? ' · ' + shortMd : '') + '</span>';
+  }
+  if (diff > 7) {
+    return '<span class="whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">D-' + diff + (shortMd ? ' · ' + shortMd : '') + '</span>';
+  }
+  return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300">D+' + Math.abs(diff) + ' · 지남</span>';
+}
+
 function todoRowHtml(todo) {
   return '<div class="flex items-center justify-between px-2.5 py-2 rounded-xl bg-slate-50/80 border border-slate-100">'
     + '<label class="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer">'
     + '<input type="checkbox" ' + (todo.isCompleted ? 'checked' : '') + ' class="w-4 h-4 rounded cursor-pointer flex-shrink-0" style="accent-color: var(--theme-primary)" onchange="toggleTodo(\'' + todo.id + '\')">'
     + '<span class="text-sm truncate ' + (todo.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-medium') + '">' + escapeHtml(todo.title) + '</span>'
     + '</label>'
+    + '<div class="flex items-center gap-1.5 flex-shrink-0 ml-2">'
+    + todoDdayBadgeHtml(todo)
     + '<button class="text-slate-300 hover:text-rose-500 p-1 transition flex-shrink-0" onclick="deleteTodo(\'' + todo.id + '\')"><i class="fa-solid fa-xmark text-xs"></i></button>'
+    + '</div>'
     + '</div>';
 }
 
 function renderTodos() {
-  const active = state.todos.filter(t => !t.isCompleted);
+  const allActive = state.todos
+    .filter(t => !t.isCompleted)
+    .slice()
+    .sort((a, b) => String(a.dueDate || '9999-99-99').localeCompare(String(b.dueDate || '9999-99-99')));
+  const weekActive = allActive.filter(t => getTodoDiffDays(t.dueDate || formatDate(new Date())) <= 7);
+  const futureActive = allActive.filter(t => getTodoDiffDays(t.dueDate || formatDate(new Date())) > 7);
+  const active = state.showAllFutureTodos ? allActive : weekActive;
   const done = state.todos.filter(t => t.isCompleted);
-  todoStatsBadge.textContent = '남은 일 ' + active.length + '개';
+  todoStatsBadge.textContent = '이번 주 ' + weekActive.length + '개' + (futureActive.length > 0 ? ' (전체 ' + allActive.length + '개)' : '');
 
   todosListContainer.innerHTML = active.length
     ? active.map(todoRowHtml).join('')
@@ -3482,8 +3530,20 @@ function renderTodos() {
         const iconHtml = mascot
           ? '<img src="' + mascot + '" class="w-11 h-11 mx-auto mb-1.5 object-contain drop-shadow-xs" alt="">'
           : '<i class="fa-regular fa-circle-check text-xl mb-1 text-slate-300"></i>';
-        return '<div class="py-6 text-center text-slate-400 text-xs">' + iconHtml + '<p>남은 할 일이 없어요.</p></div>';
+        return '<div class="py-6 text-center text-slate-400 text-xs">' + iconHtml + '<p>오늘부터 일주일 안에 남은 할 일이 없어요.</p></div>';
       })();
+
+  const futureBtn = document.getElementById('btnToggleFutureTodos');
+  if (futureBtn) {
+    if (futureActive.length === 0) {
+      futureBtn.classList.add('hidden');
+    } else {
+      futureBtn.classList.remove('hidden');
+      futureBtn.textContent = state.showAllFutureTodos
+        ? '▲ 오늘부터 일주일치(7일)만 보기'
+        : '📅 일주일 뒤 할 일 ' + futureActive.length + '개 더 보기 ▼';
+    }
+  }
 
   const toggleBtn = document.getElementById('btnToggleCompletedTodos');
   const doneWrap = document.getElementById('completedTodosContainer');
@@ -3885,12 +3945,38 @@ function setupEventListeners() {
     showToast('이름을 저장했어요! 💑');
   });
   // 할 일 빠른 추가 (Enter로 연속 입력)
+  const quickDueInput = document.getElementById('todoQuickDueDate');
+  if (quickDueInput && !quickDueInput.value) {
+    quickDueInput.value = formatDate(new Date());
+  }
+  document.querySelectorAll('.todo-due-preset-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const offset = parseInt(btn.dataset.offset || '0', 10);
+      const d = new Date();
+      d.setDate(d.getDate() + offset);
+      if (quickDueInput) quickDueInput.value = formatDate(d);
+      document.querySelectorAll('.todo-due-preset-btn').forEach(function(b) {
+        const active = b === btn;
+        b.className = 'todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold transition ' +
+          (active ? 'bg-theme-primary text-white' : 'bg-white text-slate-600 border border-slate-200');
+      });
+    });
+  });
+  if (quickDueInput) {
+    quickDueInput.addEventListener('change', function() {
+      document.querySelectorAll('.todo-due-preset-btn').forEach(function(b) {
+        b.className = 'todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition';
+      });
+    });
+  }
+
   document.getElementById('todoQuickAddForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = document.getElementById('todoQuickInput');
     const title = input.value.trim();
     if (!title) return;
-    const newTodo = { id: Date.now().toString(), title: title, isCompleted: false, dueDate: formatDate(new Date()) };
+    const dueVal = (quickDueInput && quickDueInput.value) ? quickDueInput.value : formatDate(new Date());
+    const newTodo = { id: Date.now().toString(), title: title, isCompleted: false, dueDate: dueVal };
     state.todos.push(newTodo);
     saveTodos();
     pushRemoteTodo('insert', newTodo);
@@ -3898,6 +3984,14 @@ function setupEventListeners() {
     input.value = '';
     input.focus();
   });
+
+  const btnFutureTodos = document.getElementById('btnToggleFutureTodos');
+  if (btnFutureTodos) {
+    btnFutureTodos.addEventListener('click', () => {
+      state.showAllFutureTodos = !state.showAllFutureTodos;
+      renderTodos();
+    });
+  }
 
   document.getElementById('btnToggleCompletedTodos').addEventListener('click', () => {
     state.showCompletedTodos = !state.showCompletedTodos;
