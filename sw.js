@@ -1,10 +1,10 @@
-const CACHE_NAME = 'couple-cal-v31';
+const CACHE_NAME = 'couple-cal-v32';
 const ASSETS = [
   './',
   './index.html',
-  './app.js?v=31',
-  './push-config.js?v=31',
-  './push-reminders.js?v=31',
+  './app.js?v=32',
+  './push-config.js?v=32',
+  './push-reminders.js?v=32',
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
