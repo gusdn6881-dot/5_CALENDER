@@ -207,17 +207,17 @@
   <div id="stickerThemeBgLayer"></div>
 
   <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20 safe-top px-4 pb-3">
-    <div class="flex items-center justify-between max-w-md mx-auto w-full">
-      <div>
-        <div class="flex items-center gap-2">
+    <div class="flex items-center justify-between gap-2 max-w-md mx-auto w-full">
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5 flex-wrap">
           <img id="headerThemeMascot" src="" alt="" class="hidden w-7 h-7 object-contain drop-shadow-xs select-none pointer-events-none">
-          <span class="text-xl font-extrabold tracking-tight text-theme-primary">우리하루</span>
-          <span id="ddayBadge" class="bg-rose-50 text-rose-600 border border-rose-200/60 text-xs px-2.5 py-0.5 rounded-full font-bold">결혼기념일 D-Day</span>
+          <span class="text-xl font-extrabold tracking-tight text-theme-primary whitespace-nowrap flex-shrink-0">우리하루</span>
+          <span id="ddayBadge" class="whitespace-nowrap bg-rose-50 text-rose-600 border border-rose-200/60 text-[11px] px-2 py-0.5 rounded-full font-bold">결혼기념일 D-Day</span>
         </div>
         <p id="currentHeaderDate" class="text-xs text-slate-500 mt-0.5 font-medium"></p>
       </div>
-      <div class="flex items-center gap-1.5">
-        <button id="btnHeaderSyncStatus" type="button" class="text-[11px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200 transition">⚪ 기기 선택</button>
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <button id="btnHeaderSyncStatus" type="button" class="whitespace-nowrap text-[11px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200 transition">⚪ 기기 선택</button>
         <button id="btnQuickTheme" class="w-10 h-10 rounded-full bg-slate-100/90 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition" aria-label="꾸미기">
           <i class="fa-solid fa-palette"></i>
         </button>
@@ -282,26 +282,35 @@
       <div class="card-theme rounded-2xl p-4 shadow-sm border">
         <div class="flex items-center justify-between mb-1">
           <div class="flex items-center gap-1.5">
-            <h3 class="text-base font-extrabold text-slate-800">✅ 할 일 &amp; 장보기</h3>
-            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-theme-primary border border-indigo-100">오늘~7일</span>
+            <h3 class="text-base font-extrabold text-slate-800 whitespace-nowrap">✅ 할 일 &amp; 장보기</h3>
+            <span id="todoWeekRangeBadge" class="whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-theme-primary border border-indigo-100">오늘 기준 7일</span>
           </div>
-          <span id="todoStatsBadge" class="text-xs font-semibold text-slate-500">남은 일 0개</span>
+          <span id="todoStatsBadge" class="whitespace-nowrap text-xs font-semibold text-slate-500">남은 일 0개</span>
         </div>
-        <p class="text-xs text-slate-400 mb-2.5">오늘부터 일주일치 할 일과 남은 디데이(D-Day)를 한눈에 보여줘요.</p>
-        <form id="todoQuickAddForm" class="space-y-2 mb-3">
+        <p class="text-xs text-slate-400 mb-2.5">항상 오늘 날짜를 기준으로 일주일치 할 일과 남은 기간을 바로 보여줘요.</p>
+        <form id="todoQuickAddForm" class="space-y-2.5 mb-3">
           <div class="flex gap-2">
             <input id="todoQuickInput" type="text" placeholder="할 일 쓰고 Enter (예: 우유 사기)" class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ring-theme-primary">
             <button type="submit" class="bg-theme-primary text-white px-4 rounded-xl text-sm font-bold hover:opacity-90" aria-label="넣기"><i class="fa-solid fa-plus"></i></button>
           </div>
-          <div class="flex items-center justify-between gap-1.5 bg-slate-50/90 border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-            <div class="flex items-center gap-1 overflow-x-auto custom-scrollbar">
-              <span class="text-[11px] font-bold text-slate-500 mr-0.5 whitespace-nowrap">기한:</span>
-              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-theme-primary text-white transition" data-offset="0">오늘(D-Day)</button>
-              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition" data-offset="1">내일(D-1)</button>
-              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition" data-offset="3">3일 뒤(D-3)</button>
-              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition" data-offset="7">일주일(D-7)</button>
-            </div>
-            <input id="todoQuickDueDate" type="date" class="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] font-bold text-slate-600 focus:outline-none w-[112px] flex-shrink-0">
+          <input id="todoQuickDueDate" type="hidden">
+          <div id="todoDuePresetGrid" class="grid grid-cols-4 gap-1.5">
+            <button type="button" class="todo-due-preset-btn py-1.5 px-1 rounded-xl border text-center transition bg-theme-primary text-white border-theme-primary" data-offset="0">
+              <span class="block text-xs font-extrabold leading-tight">오늘까지</span>
+              <span class="todo-preset-sub block text-[10px] opacity-90 font-semibold mt-0.5">D-Day</span>
+            </button>
+            <button type="button" class="todo-due-preset-btn py-1.5 px-1 rounded-xl border text-center transition bg-slate-50 text-slate-700 border-slate-200" data-offset="1">
+              <span class="block text-xs font-extrabold leading-tight">내일까지</span>
+              <span class="todo-preset-sub block text-[10px] text-slate-400 font-semibold mt-0.5">D-1</span>
+            </button>
+            <button type="button" class="todo-due-preset-btn py-1.5 px-1 rounded-xl border text-center transition bg-slate-50 text-slate-700 border-slate-200" data-offset="3">
+              <span class="block text-xs font-extrabold leading-tight">3일 안에</span>
+              <span class="todo-preset-sub block text-[10px] text-slate-400 font-semibold mt-0.5">D-3</span>
+            </button>
+            <button type="button" class="todo-due-preset-btn py-1.5 px-1 rounded-xl border text-center transition bg-slate-50 text-slate-700 border-slate-200" data-offset="7">
+              <span class="block text-xs font-extrabold leading-tight">일주일 안</span>
+              <span class="todo-preset-sub block text-[10px] text-slate-400 font-semibold mt-0.5">D-7</span>
+            </button>
           </div>
         </form>
         <div id="todosListContainer" class="space-y-1.5"></div>
@@ -912,8 +921,8 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="push-config.js?v=30"></script>
-  <script src="push-reminders.js?v=30"></script>
-  <script src="app.js?v=30"></script>
+  <script src="push-config.js?v=31"></script>
+  <script src="push-reminders.js?v=31"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>
