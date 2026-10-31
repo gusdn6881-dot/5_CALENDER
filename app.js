@@ -1439,7 +1439,7 @@ function setupSupabaseRealtime() {
     })
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        updateSupabaseBadge('error', '🟠 실시간 연결 재시도 필요', 'bg-amber-50 text-amber-700 border border-amber-200');
+        updateSupabaseBadge('error', '🟠 재연결 대기', 'bg-amber-50 text-amber-700 border border-amber-200');
       }
     });
 }
@@ -2329,6 +2329,7 @@ let state = {
   diarySearch: '',
   showCompletedTodos: false,
   showAllFutureTodos: false,
+  todoQuickOffset: 0,
   supabaseUrl: localStorage.getItem('cal_supabase_mode') === 'offline' ? '' : (localStorage.getItem('cal_supabase_url') || DEFAULT_SUPABASE_URL),
   supabaseKey: localStorage.getItem('cal_supabase_mode') === 'offline' ? '' : (localStorage.getItem('cal_supabase_key') || DEFAULT_SUPABASE_KEY),
   husbandName: localStorage.getItem('cal_name_husband') || '강현우',
@@ -3474,36 +3475,103 @@ function getTodoDiffDays(dueDateStr) {
 function formatTodoShortDate(dueDateStr) {
   const parts = String(dueDateStr || '').slice(0, 10).split('-').map(Number);
   if (parts.length !== 3 || !parts[1] || !parts[2]) return '';
-  return parts[1] + '/' + parts[2];
+  const dow = ['일', '월', '화', '수', '목', '금', '토'][new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
+  return parts[1] + '/' + parts[2] + '(' + dow + ')';
+}
+
+function getTodoOffsetDateStr(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + Number(offsetDays || 0));
+  return formatDate(d);
+}
+
+function refreshTodoDuePresetButtons() {
+  const now = new Date();
+  const todayMd = (now.getMonth() + 1) + '/' + now.getDate();
+  const endWeek = new Date(now);
+  endWeek.setDate(now.getDate() + 7);
+  const endMd = (endWeek.getMonth() + 1) + '/' + endWeek.getDate();
+  const rangeBadge = document.getElementById('todoWeekRangeBadge');
+  if (rangeBadge) {
+    rangeBadge.textContent = '오늘 ' + todayMd + ' ~ ' + endMd;
+  }
+  const activeOffset = Number(state.todoQuickOffset || 0);
+  const quickDueInput = document.getElementById('todoQuickDueDate');
+  if (quickDueInput) {
+    quickDueInput.value = getTodoOffsetDateStr(activeOffset);
+  }
+  document.querySelectorAll('.todo-due-preset-btn').forEach(function(btn) {
+    const offset = parseInt(btn.dataset.offset || '0', 10);
+    const targetStr = getTodoOffsetDateStr(offset);
+    const shortLabel = formatTodoShortDate(targetStr);
+    const subEl = btn.querySelector('.todo-preset-sub');
+    const dLabel = offset === 0 ? 'D-Day' : ('D-' + offset);
+    if (subEl) {
+      subEl.textContent = dLabel + ' · ' + shortLabel;
+    }
+    const isSelected = offset === activeOffset;
+    btn.className = 'todo-due-preset-btn py-1.5 px-1 rounded-xl border text-center transition ' +
+      (isSelected
+        ? 'bg-theme-primary text-white border-theme-primary shadow-xs'
+        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100');
+    if (subEl) {
+      subEl.className = 'todo-preset-sub block text-[10px] font-semibold mt-0.5 ' +
+        (isSelected ? 'text-white/90' : 'text-slate-400');
+    }
+  });
 }
 
 function todoDdayBadgeHtml(todo) {
   const due = todo.dueDate || formatDate(new Date());
   const shortMd = formatTodoShortDate(due);
   if (todo.isCompleted) {
-    return '<span class="whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 border border-slate-200">' + (shortMd ? shortMd + ' · 완료' : '완료') + '</span>';
+    return '<span class="whitespace-nowrap text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 border border-slate-200">' + (shortMd ? shortMd + ' · 완료' : '완료') + '</span>';
   }
   const diff = getTodoDiffDays(due);
   if (diff === 0) {
-    return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">D-Day · 오늘</span>';
+    return '<button type="button" onclick="cycleTodoDueDate(\'' + todo.id + '\')" title="누르면 기한 변경" class="whitespace-nowrap text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200 active:scale-95 transition">오늘 마감 · D-Day</button>';
   }
   if (diff === 1) {
-    return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">D-1 · 내일</span>';
+    return '<button type="button" onclick="cycleTodoDueDate(\'' + todo.id + '\')" title="누르면 기한 변경" class="whitespace-nowrap text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 active:scale-95 transition">내일 마감 · D-1</button>';
   }
   if (diff > 1 && diff <= 7) {
-    return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 text-theme-primary border border-indigo-200">D-' + diff + (shortMd ? ' · ' + shortMd : '') + '</span>';
+    return '<button type="button" onclick="cycleTodoDueDate(\'' + todo.id + '\')" title="누르면 기한 변경" class="whitespace-nowrap text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-indigo-50 text-theme-primary border border-indigo-200 active:scale-95 transition">' + diff + '일 남음 · D-' + diff + '</button>';
   }
   if (diff > 7) {
-    return '<span class="whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">D-' + diff + (shortMd ? ' · ' + shortMd : '') + '</span>';
+    return '<button type="button" onclick="cycleTodoDueDate(\'' + todo.id + '\')" title="누르면 기한 변경" class="whitespace-nowrap text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 active:scale-95 transition">' + diff + '일 남음 · D-' + diff + '</button>';
   }
-  return '<span class="whitespace-nowrap text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300">D+' + Math.abs(diff) + ' · 지남</span>';
+  return '<button type="button" onclick="cycleTodoDueDate(\'' + todo.id + '\')" title="누르면 기한 변경" class="whitespace-nowrap text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 border border-rose-300 active:scale-95 transition">' + Math.abs(diff) + '일 지남 · D+' + Math.abs(diff) + '</button>';
 }
 
+window.cycleTodoDueDate = function(id) {
+  const todo = state.todos.find(function(t) { return t.id === id; });
+  if (!todo || todo.isCompleted) return;
+  const curDiff = getTodoDiffDays(todo.dueDate || formatDate(new Date()));
+  const cycleSteps = [0, 1, 3, 7];
+  const nextOffset = cycleSteps.find(function(step) { return step > curDiff; });
+  const chosenOffset = nextOffset !== undefined ? nextOffset : 0;
+  todo.dueDate = getTodoOffsetDateStr(chosenOffset);
+  saveTodos();
+  pushRemoteTodo('update', todo);
+  renderTodos();
+  const labelMap = { 0: '오늘까지(D-Day)', 1: '내일까지(D-1)', 3: '3일 안에(D-3)', 7: '일주일 안(D-7)' };
+  showToast('기한을 [' + labelMap[chosenOffset] + ']로 바꿨어요 📅');
+};
+
 function todoRowHtml(todo) {
+  const due = todo.dueDate || formatDate(new Date());
+  const shortMd = formatTodoShortDate(due);
+  const diff = getTodoDiffDays(due);
+  const subDateText = diff === 0
+    ? '오늘 ' + shortMd + '까지'
+    : (diff === 1 ? '내일 ' + shortMd + '까지' : (shortMd ? shortMd + '까지' : ''));
   return '<div class="flex items-center justify-between px-2.5 py-2 rounded-xl bg-slate-50/80 border border-slate-100">'
     + '<label class="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer">'
     + '<input type="checkbox" ' + (todo.isCompleted ? 'checked' : '') + ' class="w-4 h-4 rounded cursor-pointer flex-shrink-0" style="accent-color: var(--theme-primary)" onchange="toggleTodo(\'' + todo.id + '\')">'
-    + '<span class="text-sm truncate ' + (todo.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-medium') + '">' + escapeHtml(todo.title) + '</span>'
+    + '<span class="min-w-0 flex-1">'
+    + '<span class="block text-sm truncate ' + (todo.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-bold') + '">' + escapeHtml(todo.title) + '</span>'
+    + (subDateText ? '<span class="block text-[10px] font-semibold text-slate-400">' + subDateText + '</span>' : '')
+    + '</span>'
     + '</label>'
     + '<div class="flex items-center gap-1.5 flex-shrink-0 ml-2">'
     + todoDdayBadgeHtml(todo)
@@ -3513,6 +3581,7 @@ function todoRowHtml(todo) {
 }
 
 function renderTodos() {
+  refreshTodoDuePresetButtons();
   const allActive = state.todos
     .filter(t => !t.isCompleted)
     .slice()
@@ -3889,7 +3958,15 @@ function setupEventListeners() {
     btnPushReminders.addEventListener('click', toggleCurrentDevicePushReminders);
   }
   document.addEventListener('visibilitychange', function() {
-    if (!document.hidden && isAuthorizedCoupleSession()) renderPushReminderSettings();
+    if (!document.hidden) {
+      updateHeaderDate();
+      updateDDayBadge();
+      renderTodos();
+      if (isAuthorizedCoupleSession()) {
+        renderPushReminderSettings();
+        setupSupabaseRealtime();
+      }
+    }
   });
   const btnRetrySync = document.getElementById('btnRetryPendingSync');
   if (btnRetrySync) {
@@ -3946,40 +4023,26 @@ function setupEventListeners() {
   });
   // 할 일 빠른 추가 (Enter로 연속 입력)
   const quickDueInput = document.getElementById('todoQuickDueDate');
-  if (quickDueInput && !quickDueInput.value) {
-    quickDueInput.value = formatDate(new Date());
-  }
+  refreshTodoDuePresetButtons();
   document.querySelectorAll('.todo-due-preset-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
       const offset = parseInt(btn.dataset.offset || '0', 10);
-      const d = new Date();
-      d.setDate(d.getDate() + offset);
-      if (quickDueInput) quickDueInput.value = formatDate(d);
-      document.querySelectorAll('.todo-due-preset-btn').forEach(function(b) {
-        const active = b === btn;
-        b.className = 'todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold transition ' +
-          (active ? 'bg-theme-primary text-white' : 'bg-white text-slate-600 border border-slate-200');
-      });
+      state.todoQuickOffset = offset;
+      refreshTodoDuePresetButtons();
     });
   });
-  if (quickDueInput) {
-    quickDueInput.addEventListener('change', function() {
-      document.querySelectorAll('.todo-due-preset-btn').forEach(function(b) {
-        b.className = 'todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition';
-      });
-    });
-  }
 
   document.getElementById('todoQuickAddForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = document.getElementById('todoQuickInput');
     const title = input.value.trim();
     if (!title) return;
-    const dueVal = (quickDueInput && quickDueInput.value) ? quickDueInput.value : formatDate(new Date());
+    const dueVal = getTodoOffsetDateStr(state.todoQuickOffset || 0);
     const newTodo = { id: Date.now().toString(), title: title, isCompleted: false, dueDate: dueVal };
     state.todos.push(newTodo);
     saveTodos();
     pushRemoteTodo('insert', newTodo);
+    state.todoQuickOffset = 0;
     renderTodos();
     input.value = '';
     input.focus();
