@@ -280,15 +280,32 @@
     <!-- 할 일 -->
     <div id="tabTodos" class="hidden space-y-3">
       <div class="card-theme rounded-2xl p-4 shadow-sm border">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-base font-extrabold text-slate-800">✅ 할 일 &amp; 장보기</h3>
+        <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center gap-1.5">
+            <h3 class="text-base font-extrabold text-slate-800">✅ 할 일 &amp; 장보기</h3>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-theme-primary border border-indigo-100">오늘~7일</span>
+          </div>
           <span id="todoStatsBadge" class="text-xs font-semibold text-slate-500">남은 일 0개</span>
         </div>
-        <form id="todoQuickAddForm" class="flex gap-2 mb-3">
-          <input id="todoQuickInput" type="text" placeholder="할 일 쓰고 Enter (예: 우유 사기)" class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ring-theme-primary">
-          <button type="submit" class="bg-theme-primary text-white px-4 rounded-xl text-sm font-bold hover:opacity-90" aria-label="넣기"><i class="fa-solid fa-plus"></i></button>
+        <p class="text-xs text-slate-400 mb-2.5">오늘부터 일주일치 할 일과 남은 디데이(D-Day)를 한눈에 보여줘요.</p>
+        <form id="todoQuickAddForm" class="space-y-2 mb-3">
+          <div class="flex gap-2">
+            <input id="todoQuickInput" type="text" placeholder="할 일 쓰고 Enter (예: 우유 사기)" class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ring-theme-primary">
+            <button type="submit" class="bg-theme-primary text-white px-4 rounded-xl text-sm font-bold hover:opacity-90" aria-label="넣기"><i class="fa-solid fa-plus"></i></button>
+          </div>
+          <div class="flex items-center justify-between gap-1.5 bg-slate-50/90 border border-slate-200/70 rounded-xl px-2.5 py-1.5">
+            <div class="flex items-center gap-1 overflow-x-auto custom-scrollbar">
+              <span class="text-[11px] font-bold text-slate-500 mr-0.5 whitespace-nowrap">기한:</span>
+              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-theme-primary text-white transition" data-offset="0">오늘(D-Day)</button>
+              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition" data-offset="1">내일(D-1)</button>
+              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition" data-offset="3">3일 뒤(D-3)</button>
+              <button type="button" class="todo-due-preset-btn whitespace-nowrap px-2 py-0.5 rounded-lg text-[11px] font-bold bg-white text-slate-600 border border-slate-200 transition" data-offset="7">일주일(D-7)</button>
+            </div>
+            <input id="todoQuickDueDate" type="date" class="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] font-bold text-slate-600 focus:outline-none w-[112px] flex-shrink-0">
+          </div>
         </form>
         <div id="todosListContainer" class="space-y-1.5"></div>
+        <button id="btnToggleFutureTodos" class="hidden mt-2 w-full text-xs font-bold text-theme-primary bg-indigo-50/80 hover:bg-indigo-100 rounded-xl py-2 transition"></button>
         <button id="btnToggleCompletedTodos" class="hidden mt-3 w-full text-xs font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl py-2 transition"></button>
         <div id="completedTodosContainer" class="hidden mt-2 space-y-1.5"></div>
       </div>
@@ -895,8 +912,8 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="push-config.js?v=29"></script>
-  <script src="push-reminders.js?v=29"></script>
-  <script src="app.js?v=29"></script>
+  <script src="push-config.js?v=30"></script>
+  <script src="push-reminders.js?v=30"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
