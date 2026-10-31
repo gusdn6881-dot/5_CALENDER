@@ -1240,11 +1240,16 @@ async function decodeRemoteTodoRow(rt) {
     const dec = await decryptCoupleField(title);
     title = dec !== null ? dec : '🔒 암호화된 할 일';
   }
+  const rawDue = String(rt.due_date || rt.dueDate || '');
+  const parts = rawDue.split('|');
+  const cleanDue = parts[0] || '';
+  const owner = parts[1] || rt.owner || 'both';
   return {
     id: rt.id,
     title: title,
     isCompleted: rt.is_completed ?? rt.isCompleted ?? false,
-    dueDate: rt.due_date || rt.dueDate || ''
+    dueDate: cleanDue,
+    owner: owner
   };
 }
 
@@ -1502,11 +1507,13 @@ async function pushRemoteTodo(action, item) {
       if (!res.error) remoteSnapshotIds.todos.delete(item.id);
     } else {
       const encTitle = await encryptCoupleField(item.title || '');
+      const cleanDue = String(item.dueDate || '').split('|')[0];
+      const ownerVal = item.owner || 'both';
       const payload = {
         id: item.id,
         title: encTitle,
         is_completed: item.isCompleted,
-        due_date: item.dueDate || null
+        due_date: cleanDue ? (cleanDue + '|' + ownerVal) : ('|' + ownerVal)
       };
       res = await supabaseClient.from('todos').upsert(payload);
       if (!res.error) remoteSnapshotIds.todos.add(item.id);
@@ -2330,6 +2337,8 @@ let state = {
   showCompletedTodos: false,
   showAllFutureTodos: false,
   todoQuickOffset: 0,
+  todoOwnerFilter: 'all',
+  todoQuickOwner: 'both',
   supabaseUrl: localStorage.getItem('cal_supabase_mode') === 'offline' ? '' : (localStorage.getItem('cal_supabase_url') || DEFAULT_SUPABASE_URL),
   supabaseKey: localStorage.getItem('cal_supabase_mode') === 'offline' ? '' : (localStorage.getItem('cal_supabase_key') || DEFAULT_SUPABASE_KEY),
   husbandName: localStorage.getItem('cal_name_husband') || '강현우',
@@ -3558,10 +3567,89 @@ window.cycleTodoDueDate = function(id) {
   showToast('기한을 [' + labelMap[chosenOffset] + ']로 바꿨어요 📅');
 };
 
+function todoMatchesOwnerFilter(todo) {
+  const f = state.todoOwnerFilter || 'all';
+  if (f === 'all') return true;
+  const owner = todo.owner || 'both';
+  return owner === f;
+}
+
+window.setTodoOwnerFilter = function(key) {
+  if (key !== 'all' && state.todoOwnerFilter === key) {
+    state.todoOwnerFilter = 'all';
+  } else {
+    state.todoOwnerFilter = key;
+  }
+  if (state.todoOwnerFilter === 'husband' || state.todoOwnerFilter === 'wife' || state.todoOwnerFilter === 'both') {
+    state.todoQuickOwner = state.todoOwnerFilter;
+  }
+  renderTodos();
+};
+
+window.setTodoQuickOwner = function(ownerKey) {
+  state.todoQuickOwner = ownerKey || 'both';
+  renderTodoOwnerControls();
+};
+
+window.cycleTodoOwner = function(id) {
+  const todo = state.todos.find(function(t) { return t.id === id; });
+  if (!todo) return;
+  const order = ['both', 'husband', 'wife'];
+  const curIdx = order.indexOf(todo.owner || 'both');
+  todo.owner = order[(curIdx + 1) % order.length];
+  saveTodos();
+  pushRemoteTodo('update', todo);
+  renderTodos();
+  showToast('담당을 [' + ownerLabel(todo.owner) + ']로 바꿨어요 💑');
+};
+
+function renderTodoOwnerControls() {
+  const filterBar = document.getElementById('todoOwnerFilterBar');
+  const isDark = document.body.classList.contains('theme-dark');
+  if (filterBar) {
+    const cur = state.todoOwnerFilter || 'all';
+    const items = [
+      ['all', '전체', null],
+      ['husband', state.husbandName, OWNER_COLORS.husband],
+      ['wife', state.wifeName, OWNER_COLORS.wife],
+      ['both', '우리 둘', OWNER_COLORS.both]
+    ];
+    filterBar.innerHTML = items.map(function(p) {
+      const key = p[0], label = p[1], dotColor = p[2];
+      const active = cur === key;
+      const activeBg = dotColor || 'var(--theme-primary)';
+      const inactiveStyle = isDark ? 'background:#0F172A;color:#CBD5E1;border-color:#334155' : 'background:#F8FAFC;color:#475569;border-color:#E2E8F0';
+      const style = active ? ('background:' + activeBg + ';color:#FFFFFF;border-color:' + activeBg) : inactiveStyle;
+      const dotHtml = dotColor ? ('<span class="w-2 h-2 rounded-full flex-shrink-0" style="background:' + (active ? '#FFFFFF' : dotColor) + '"></span>') : '';
+      return '<button type="button" onclick="setTodoOwnerFilter(\'' + key + '\')" class="flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl border transition active:scale-95 whitespace-nowrap truncate" style="' + style + '">' + dotHtml + '<span class="truncate">' + escapeHtml(label) + '</span></button>';
+    }).join('');
+  }
+
+  const quickOwnerGroup = document.getElementById('todoQuickOwnerGroup');
+  if (quickOwnerGroup) {
+    const curOwner = state.todoQuickOwner || 'both';
+    const ownerItems = [
+      ['husband', '🙋‍♂️ ' + state.husbandName, OWNER_COLORS.husband],
+      ['wife', '🙋‍♀️ ' + state.wifeName, OWNER_COLORS.wife],
+      ['both', '💑 우리 둘', OWNER_COLORS.both]
+    ];
+    quickOwnerGroup.innerHTML = ownerItems.map(function(item) {
+      const key = item[0], label = item[1], color = item[2];
+      const active = curOwner === key;
+      const inactiveStyle = isDark ? 'background:#0F172A;color:#94A3B8;border-color:#334155' : 'background:#F8FAFC;color:#64748B;border-color:#E2E8F0';
+      const style = active ? ('background:' + hexWithAlpha(color, '22') + ';color:' + color + ';border-color:' + color) : inactiveStyle;
+      return '<button type="button" onclick="setTodoQuickOwner(\'' + key + '\')" class="py-1.5 px-2 rounded-xl border text-xs font-extrabold transition active:scale-95 whitespace-nowrap truncate" style="' + style + '">' + escapeHtml(label) + '</button>';
+    }).join('');
+  }
+}
+
 function todoRowHtml(todo) {
   const due = todo.dueDate || formatDate(new Date());
   const shortMd = formatTodoShortDate(due);
   const diff = getTodoDiffDays(due);
+  const ownerKey = todo.owner || 'both';
+  const ownerColor = OWNER_COLORS[ownerKey] || OWNER_COLORS.both;
+  const ownerText = ownerLabel(ownerKey);
   const subDateText = diff === 0
     ? '오늘 ' + shortMd + '까지'
     : (diff === 1 ? '내일 ' + shortMd + '까지' : (shortMd ? shortMd + '까지' : ''));
@@ -3570,7 +3658,11 @@ function todoRowHtml(todo) {
     + '<input type="checkbox" ' + (todo.isCompleted ? 'checked' : '') + ' class="w-4 h-4 rounded cursor-pointer flex-shrink-0" style="accent-color: var(--theme-primary)" onchange="toggleTodo(\'' + todo.id + '\')">'
     + '<span class="min-w-0 flex-1">'
     + '<span class="block text-sm truncate ' + (todo.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-bold') + '">' + escapeHtml(todo.title) + '</span>'
-    + (subDateText ? '<span class="block text-[10px] font-semibold text-slate-400">' + subDateText + '</span>' : '')
+    + '<span class="flex items-center gap-1.5 mt-0.5">'
+    + '<button type="button" onclick="event.preventDefault();cycleTodoOwner(\'' + todo.id + '\')" title="누르면 담당 변경" class="inline-flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.2 rounded-md border" style="color:' + ownerColor + ';border-color:' + hexWithAlpha(ownerColor, '44') + ';background:' + hexWithAlpha(ownerColor, '15') + '">'
+    + '<span class="w-1.5 h-1.5 rounded-full" style="background:' + ownerColor + '"></span>' + escapeHtml(ownerText) + '</button>'
+    + (subDateText ? '<span class="text-[10px] font-semibold text-slate-400">' + subDateText + '</span>' : '')
+    + '</span>'
     + '</span>'
     + '</label>'
     + '<div class="flex items-center gap-1.5 flex-shrink-0 ml-2">'
@@ -3582,14 +3674,15 @@ function todoRowHtml(todo) {
 
 function renderTodos() {
   refreshTodoDuePresetButtons();
+  renderTodoOwnerControls();
   const allActive = state.todos
-    .filter(t => !t.isCompleted)
+    .filter(t => !t.isCompleted && todoMatchesOwnerFilter(t))
     .slice()
     .sort((a, b) => String(a.dueDate || '9999-99-99').localeCompare(String(b.dueDate || '9999-99-99')));
   const weekActive = allActive.filter(t => getTodoDiffDays(t.dueDate || formatDate(new Date())) <= 7);
   const futureActive = allActive.filter(t => getTodoDiffDays(t.dueDate || formatDate(new Date())) > 7);
   const active = state.showAllFutureTodos ? allActive : weekActive;
-  const done = state.todos.filter(t => t.isCompleted);
+  const done = state.todos.filter(t => t.isCompleted && todoMatchesOwnerFilter(t));
   todoStatsBadge.textContent = '이번 주 ' + weekActive.length + '개' + (futureActive.length > 0 ? ' (전체 ' + allActive.length + '개)' : '');
 
   todosListContainer.innerHTML = active.length
@@ -4038,7 +4131,8 @@ function setupEventListeners() {
     const title = input.value.trim();
     if (!title) return;
     const dueVal = getTodoOffsetDateStr(state.todoQuickOffset || 0);
-    const newTodo = { id: Date.now().toString(), title: title, isCompleted: false, dueDate: dueVal };
+    const ownerVal = state.todoQuickOwner || 'both';
+    const newTodo = { id: Date.now().toString(), title: title, isCompleted: false, dueDate: dueVal, owner: ownerVal };
     state.todos.push(newTodo);
     saveTodos();
     pushRemoteTodo('insert', newTodo);
@@ -4310,7 +4404,7 @@ function setupEventListeners() {
       openDaySheet();
       showToast(existing ? '약속을 고쳤어요! ✏️' : '약속을 저장했어요! 🎉');
     } else if (mode === 'todo') {
-      state.todos.push({ id: Date.now().toString(), title: textVal, isCompleted: false, dueDate: dateVal });
+      state.todos.push({ id: Date.now().toString(), title: textVal, isCompleted: false, dueDate: dateVal, owner: state.selectedOwner || 'both' });
       saveTodos();
       pushRemoteTodo('insert', state.todos[state.todos.length - 1]);
       closeAddModal();
@@ -4426,8 +4520,8 @@ function setModalMode(mode) {
   inputItemLabel.textContent = conf.label;
   inputItemTitle.placeholder = conf.ph;
   inputItemTitle.rows = mode === 'diary' ? 4 : 2;
-  document.getElementById('ownerSelectorWrap').classList.toggle('hidden', mode !== 'event');
-  document.getElementById('dateFieldWrap').classList.toggle('hidden', mode === 'todo');
+  document.getElementById('ownerSelectorWrap').classList.toggle('hidden', mode === 'diary');
+  document.getElementById('dateFieldWrap').classList.toggle('hidden', false);
   document.getElementById('endDateWrap').classList.toggle('hidden', mode !== 'event');
   document.getElementById('repeatFieldWrap').classList.toggle('hidden', mode !== 'event');
   timeFieldWrap.classList.toggle('hidden', mode !== 'event');
