@@ -288,11 +288,16 @@
           <span id="todoStatsBadge" class="whitespace-nowrap text-xs font-semibold text-slate-500">남은 일 0개</span>
         </div>
         <p class="text-xs text-slate-400 mb-2.5">항상 오늘 날짜를 기준으로 일주일치 할 일과 남은 기간을 바로 보여줘요.</p>
+
+        <!-- 누구 할 일 볼지 필터 (전체 / 강현우 / 김시문 / 우리 둘) -->
+        <div id="todoOwnerFilterBar" class="grid grid-cols-4 gap-1.5 mb-3 text-xs font-bold"></div>
+
         <form id="todoQuickAddForm" class="space-y-2.5 mb-3">
           <div class="flex gap-2">
             <input id="todoQuickInput" type="text" placeholder="할 일 쓰고 Enter (예: 우유 사기)" class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ring-theme-primary">
             <button type="submit" class="bg-theme-primary text-white px-4 rounded-xl text-sm font-bold hover:opacity-90" aria-label="넣기"><i class="fa-solid fa-plus"></i></button>
           </div>
+          <div id="todoQuickOwnerGroup" class="grid grid-cols-3 gap-1.5"></div>
           <input id="todoQuickDueDate" type="hidden">
           <div id="todoDuePresetGrid" class="grid grid-cols-4 gap-1.5">
             <button type="button" class="todo-due-preset-btn py-1.5 px-1 rounded-xl border text-center transition bg-theme-primary text-white border-theme-primary" data-offset="0">
@@ -921,8 +926,8 @@
     <button id="toastUndo" class="hidden text-amber-300 font-extrabold px-2.5 py-1 rounded-lg hover:bg-white/10">되돌리기</button>
   </div>
 
-  <script src="push-config.js?v=31"></script>
-  <script src="push-reminders.js?v=31"></script>
-  <script src="app.js?v=31"></script>
+  <script src="push-config.js?v=32"></script>
+  <script src="push-reminders.js?v=32"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>
