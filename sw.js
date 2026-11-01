@@ -1,10 +1,10 @@
-const CACHE_NAME = 'couple-cal-v33';
+const CACHE_NAME = 'couple-cal-v34';
 const ASSETS = [
   './',
   './index.html',
-  './app.js?v=33',
-  './push-config.js?v=33',
-  './push-reminders.js?v=33',
+  './app.js?v=34',
+  './push-config.js?v=34',
+  './push-reminders.js?v=34',
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
@@ -39,7 +39,7 @@ self.addEventListener('fetch', (e) => {
 
 self.addEventListener('push', (e) => {
   e.waitUntil(self.registration.showNotification('우리하루', {
-    body: '약속 시간이 되었어요. 우리하루에서 확인해 주세요.',
+    body: '약속 1시간 전이에요! 우리하루에서 일정을 확인해 주세요.',
     icon: './icons/icon-192.png',
     badge: './icons/icon-192.png',
     data: { appUrl: self.registration.scope }
