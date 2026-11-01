@@ -1293,6 +1293,59 @@ async function applyDecodedCoupleSettings(rawJsonStr) {
       const wInput = document.getElementById('inputWifeName');
       if (wInput) wInput.value = cfg.wifeName;
     }
+    if (typeof cfg.currentThemeId === 'string' && cfg.currentThemeId) {
+      state.currentThemeId = cfg.currentThemeId;
+      localStorage.setItem('cal_theme_id', cfg.currentThemeId);
+    }
+    if (typeof cfg.isDarkTheme === 'boolean') {
+      state.isDarkTheme = cfg.isDarkTheme;
+      localStorage.setItem('cal_is_dark', cfg.isDarkTheme ? '1' : '0');
+    }
+    if (typeof cfg.customPrimaryColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(cfg.customPrimaryColor)) {
+      state.customPrimaryColor = cfg.customPrimaryColor;
+      localStorage.setItem('cal_custom_color', cfg.customPrimaryColor);
+    }
+    if (typeof cfg.customTextColor === 'string') {
+      state.customTextColor = cfg.customTextColor;
+      if (cfg.customTextColor) {
+        localStorage.setItem('cal_custom_text_color', cfg.customTextColor);
+      } else {
+        localStorage.removeItem('cal_custom_text_color');
+      }
+    }
+    if (state.isDarkTheme || state.currentThemeId === 'custom' || !THEMES[state.currentThemeId]) {
+      const customTheme = {
+        primary: state.customPrimaryColor || '#4F46E5',
+        secondary: '#F43F5E',
+        bg: state.isDarkTheme ? '#0F172A' : '#F8FAFC',
+        card: state.isDarkTheme ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.94)',
+        text: state.isDarkTheme ? '#F8FAFC' : '#0F172A',
+        isDark: state.isDarkTheme
+      };
+      applyTheme(customTheme, !state.isDarkTheme);
+    } else {
+      applyTheme(THEMES[state.currentThemeId], false);
+    }
+    if ('bgPhoto' in cfg) {
+      state.bgPhoto = cfg.bgPhoto || null;
+      try {
+        if (state.bgPhoto) localStorage.setItem('cal_bg_photo', state.bgPhoto);
+        else localStorage.removeItem('cal_bg_photo');
+      } catch (e) {}
+    }
+    if (cfg.bgOpacity) {
+      state.bgOpacity = String(cfg.bgOpacity);
+      localStorage.setItem('cal_bg_opacity', state.bgOpacity);
+    }
+    if (cfg.bgBlur !== undefined && cfg.bgBlur !== null) {
+      state.bgBlur = String(cfg.bgBlur);
+      localStorage.setItem('cal_bg_blur', state.bgBlur);
+    }
+    applyUserBgPhoto();
+    if (Array.isArray(cfg.customStickers)) {
+      state.customStickers = cfg.customStickers;
+      saveCustomStickers();
+    }
     if (cfg.stickerThemeId && STICKER_THEMES.some(t => t.id === cfg.stickerThemeId)) {
       state.stickerThemeId = cfg.stickerThemeId;
       localStorage.setItem('cal_sticker_theme', cfg.stickerThemeId);
@@ -1308,10 +1361,20 @@ async function applyDecodedCoupleSettings(rawJsonStr) {
     renderStickerUiEverywhere();
     renderLegend();
     updateOwnerButtons();
+    renderTodos();
     return true;
   } catch (e) {
     return false;
   }
+}
+
+let coupleSettingsSyncTimer = null;
+function schedulePushCoupleSettings() {
+  if (coupleSettingsSyncTimer) clearTimeout(coupleSettingsSyncTimer);
+  coupleSettingsSyncTimer = setTimeout(function() {
+    coupleSettingsSyncTimer = null;
+    pushRemoteCoupleSettings();
+  }, 250);
 }
 
 async function pushRemoteCoupleSettings() {
@@ -1321,6 +1384,14 @@ async function pushRemoteCoupleSettings() {
       anniversaryDate: state.anniversaryDate,
       husbandName: state.husbandName,
       wifeName: state.wifeName,
+      currentThemeId: state.currentThemeId,
+      customPrimaryColor: state.customPrimaryColor,
+      isDarkTheme: !!state.isDarkTheme,
+      customTextColor: state.customTextColor || '',
+      bgPhoto: state.bgPhoto || null,
+      bgOpacity: state.bgOpacity,
+      bgBlur: state.bgBlur,
+      customStickers: Array.isArray(state.customStickers) ? state.customStickers : [],
       stickerThemeId: state.stickerThemeId,
       stickerSize: state.stickerSize,
       stickerBgOpacity: state.stickerBgOpacity,
@@ -1428,7 +1499,7 @@ async function pullRemoteSupabaseData() {
         ? await decryptCoupleField(rawSettingsRow.title)
         : rawSettingsRow.title;
       if (decSettings) await applyDecodedCoupleSettings(decSettings);
-    } else if (localStorage.getItem('cal_anniversary')) {
+    } else {
       pushRemoteCoupleSettings();
     }
 
@@ -3096,6 +3167,7 @@ window.deleteCustomSticker = function(id, ev) {
   saveCustomStickers();
   if (state.activeStampStickerId === id) state.activeStampStickerId = 'ramjju_happy';
   renderStickerUiEverywhere();
+  pushRemoteCoupleSettings();
   showToast('커스텀 스티커를 지웠어요.');
 };
 
@@ -3187,6 +3259,7 @@ function selectPresetTheme(themeId) {
   renderLegend();
   updateOwnerButtons();
   renderCalendar();
+  pushRemoteCoupleSettings();
 }
 
 function selectCustomColor(hex) {
@@ -3209,6 +3282,7 @@ function selectCustomColor(hex) {
   renderLegend();
   updateOwnerButtons();
   renderCalendar();
+  schedulePushCoupleSettings();
 }
 
 function selectCustomTextColor(hex) {
@@ -3223,6 +3297,7 @@ function selectCustomTextColor(hex) {
   } else {
     applyTheme(THEMES[state.currentThemeId], false);
   }
+  schedulePushCoupleSettings();
 }
 
 // ==============================================================================
@@ -3949,6 +4024,7 @@ function setupEventListeners() {
       localStorage.setItem('cal_sticker_size', state.stickerSize);
       renderStickerUiEverywhere();
       renderCalendar();
+      pushRemoteCoupleSettings();
     });
   });
   const rangeStickerBg = document.getElementById('rangeStickerBgOpacity');
@@ -3957,6 +4033,7 @@ function setupEventListeners() {
       state.stickerBgOpacity = e.target.value;
       localStorage.setItem('cal_sticker_bg_opacity', state.stickerBgOpacity);
       renderStickerThemeBackground();
+      schedulePushCoupleSettings();
     });
   }
   const inputCustomSt = document.getElementById('inputCustomStickerFile');
@@ -3979,6 +4056,7 @@ function setupEventListeners() {
         localStorage.setItem('cal_sticker_theme', 'custom_pack');
         renderStickerUiEverywhere();
         renderCalendar();
+        pushRemoteCoupleSettings();
         showToast('내 사진 캐릭터 테마가 적용되었어요! 🎉');
       } catch (err) {
         showToast('스티커 이미지를 불러오지 못했어요 😥');
@@ -4397,6 +4475,7 @@ function setupEventListeners() {
     applyUserBgPhoto();
     try {
       localStorage.setItem('cal_bg_photo', state.bgPhoto);
+      pushRemoteCoupleSettings();
       showToast('배경 사진을 바꿨어요! 🖼️');
     } catch (err) {
       showToast('사진이 너무 커서 저장하지 못했어요 😥');
@@ -4407,6 +4486,7 @@ function setupEventListeners() {
     state.bgPhoto = null;
     localStorage.removeItem('cal_bg_photo');
     applyUserBgPhoto();
+    pushRemoteCoupleSettings();
     showToast('원래 배경으로 돌아왔어요');
   });
 
@@ -4414,6 +4494,7 @@ function setupEventListeners() {
     state.bgOpacity = e.target.value;
     localStorage.setItem('cal_bg_opacity', state.bgOpacity);
     document.documentElement.style.setProperty('--bg-opacity', (parseInt(state.bgOpacity) / 100).toString());
+    schedulePushCoupleSettings();
   });
 
   rangeBgBlur.addEventListener('input', (e) => {
