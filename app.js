@@ -177,6 +177,11 @@ function isStickerRecordId(id) {
   return String(id || '').indexOf('__sticker__') === 0;
 }
 
+const COUPLE_SETTINGS_ID = '__couple_settings__';
+function isCoupleSettingsRecordId(id) {
+  return String(id || '') === COUPLE_SETTINGS_ID;
+}
+
 function bytesToBase64(bytes) {
   let binary = '';
   const chunk = 0x8000;
@@ -1228,44 +1233,106 @@ function buildMemberRegistrationSql(displayName, role) {
 }
 
 function mergeRemoteWithLocalPreservingCollisions(localList, remoteList, normalizeRemoteFn, typeLabel) {
-  const localById = new Map(localList.map(item => [item.id, item]));
+  const syncedKey = 'cal_synced_ids_' + typeLabel;
+  let prevSyncedIds = new Set();
+  try {
+    prevSyncedIds = new Set(JSON.parse(localStorage.getItem(syncedKey) || '[]'));
+  } catch (e) {}
   const remoteIds = new Set();
   const mergedMap = new Map();
-
-  // 먼저 기존 로컬 기록을 그대로 넣음
-  localList.forEach(item => {
-    mergedMap.set(item.id, item);
-  });
+  const unsyncedNewLocals = [];
 
   remoteList.forEach(rawRemote => {
     const remoteItem = normalizeRemoteFn(rawRemote);
     remoteIds.add(remoteItem.id);
-    const existingLocal = localById.get(remoteItem.id);
-    if (existingLocal && !isSampleRecord(typeLabel, existingLocal)) {
-      const localSig = JSON.stringify({
-        t: existingLocal.title || existingLocal.content || '',
-        d: existingLocal.date || existingLocal.dueDate || '',
-        m: existingLocal.time || existingLocal.mood || ''
-      });
-      const remoteSig = JSON.stringify({
-        t: remoteItem.title || remoteItem.content || '',
-        d: remoteItem.date || remoteItem.dueDate || '',
-        m: remoteItem.time || remoteItem.mood || ''
-      });
-      if (localSig !== remoteSig) {
-        const preservedId = existingLocal.id + '-local-' + Date.now().toString().slice(-4);
-        if (!mergedMap.has(preservedId)) {
-          mergedMap.set(preservedId, Object.assign({}, existingLocal, { id: preservedId, preservedFromCollision: true }));
-        }
-      }
-    }
     mergedMap.set(remoteItem.id, remoteItem);
   });
 
+  // 로컬에만 있던 실제 기록(샘플 제외, 이전에 서버에 있었다가 상대방이 삭제한 항목 제외)은 보존 후 자동 업로드
+  localList.forEach(item => {
+    if (!item || !item.id) return;
+    if (remoteIds.has(item.id)) return;
+    if (isSampleRecord(typeLabel, item)) return;
+    if (prevSyncedIds.has(item.id)) return;
+    mergedMap.set(item.id, item);
+    unsyncedNewLocals.push(item);
+  });
+
+  try {
+    localStorage.setItem(syncedKey, JSON.stringify(Array.from(mergedMap.keys())));
+  } catch (e) {}
+
   return {
     merged: Array.from(mergedMap.values()),
-    remoteIds: remoteIds
+    remoteIds: remoteIds,
+    unsyncedNewLocals: unsyncedNewLocals
   };
+}
+
+async function applyDecodedCoupleSettings(rawJsonStr) {
+  if (!rawJsonStr) return false;
+  try {
+    const cfg = JSON.parse(rawJsonStr);
+    if (!cfg || typeof cfg !== 'object') return false;
+    if (cfg.anniversaryDate && /^\d{4}-\d{2}-\d{2}$/.test(cfg.anniversaryDate)) {
+      state.anniversaryDate = cfg.anniversaryDate;
+      localStorage.setItem('cal_anniversary', cfg.anniversaryDate);
+      const annivInput = document.getElementById('inputAnniversary');
+      if (annivInput) annivInput.value = cfg.anniversaryDate;
+      updateDDayBadge();
+    }
+    if (cfg.husbandName) {
+      state.husbandName = cfg.husbandName;
+      localStorage.setItem('cal_name_husband', cfg.husbandName);
+      const hInput = document.getElementById('inputHusbandName');
+      if (hInput) hInput.value = cfg.husbandName;
+    }
+    if (cfg.wifeName) {
+      state.wifeName = cfg.wifeName;
+      localStorage.setItem('cal_name_wife', cfg.wifeName);
+      const wInput = document.getElementById('inputWifeName');
+      if (wInput) wInput.value = cfg.wifeName;
+    }
+    if (cfg.stickerThemeId && STICKER_THEMES.some(t => t.id === cfg.stickerThemeId)) {
+      state.stickerThemeId = cfg.stickerThemeId;
+      localStorage.setItem('cal_sticker_theme', cfg.stickerThemeId);
+    }
+    if (cfg.stickerSize) {
+      state.stickerSize = cfg.stickerSize;
+      localStorage.setItem('cal_sticker_size', cfg.stickerSize);
+    }
+    if (cfg.stickerBgOpacity) {
+      state.stickerBgOpacity = String(cfg.stickerBgOpacity);
+      localStorage.setItem('cal_sticker_bg_opacity', state.stickerBgOpacity);
+    }
+    renderStickerUiEverywhere();
+    renderLegend();
+    updateOwnerButtons();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function pushRemoteCoupleSettings() {
+  if (isRemoteUpdating || !isAuthorizedCoupleSession() || !supabaseClient || !coupleCryptoKey) return false;
+  try {
+    const payloadObj = {
+      anniversaryDate: state.anniversaryDate,
+      husbandName: state.husbandName,
+      wifeName: state.wifeName,
+      stickerThemeId: state.stickerThemeId,
+      stickerSize: state.stickerSize,
+      stickerBgOpacity: state.stickerBgOpacity,
+      updatedAt: Date.now()
+    };
+    const enc = await encryptCoupleField(JSON.stringify(payloadObj));
+    const row = makeSystemLockRow(COUPLE_SETTINGS_ID, enc);
+    const { error } = await supabaseClient.from('events').upsert(row);
+    return !error;
+  } catch (e) {
+    return false;
+  }
 }
 
 async function decodeRemoteEventRow(re) {
@@ -1343,8 +1410,9 @@ async function pullRemoteSupabaseData() {
     }
 
     const rawEvents = (evRes.data || []).filter(r => r && !isSystemLockRecordId(r.id));
-    const rawStickerRows = rawEvents.filter(r => isStickerRecordId(r.id));
-    const normalEventRows = rawEvents.filter(r => !isStickerRecordId(r.id));
+    const rawSettingsRow = rawEvents.find(r => isCoupleSettingsRecordId(r.id));
+    const rawStickerRows = rawEvents.filter(r => !isCoupleSettingsRecordId(r.id) && isStickerRecordId(r.id));
+    const normalEventRows = rawEvents.filter(r => !isCoupleSettingsRecordId(r.id) && !isStickerRecordId(r.id));
     const rawTodos = tdRes.data || [];
     const rawDiaries = diRes.data || [];
 
@@ -1355,6 +1423,18 @@ async function pullRemoteSupabaseData() {
       Promise.all(rawDiaries.map(decodeRemoteDiaryRow))
     ]);
 
+    if (rawSettingsRow && rawSettingsRow.title) {
+      const decSettings = String(rawSettingsRow.title).startsWith('ENC1:')
+        ? await decryptCoupleField(rawSettingsRow.title)
+        : rawSettingsRow.title;
+      if (decSettings) await applyDecodedCoupleSettings(decSettings);
+    } else if (localStorage.getItem('cal_anniversary')) {
+      pushRemoteCoupleSettings();
+    }
+
+    let newEventsToPush = [];
+    let newTodosToPush = [];
+    let newDiariesToPush = [];
     isRemoteUpdating = true;
     try {
       const evMerged = mergeRemoteWithLocalPreservingCollisions(
@@ -1365,6 +1445,7 @@ async function pullRemoteSupabaseData() {
       );
       state.events = evMerged.merged;
       remoteSnapshotIds.events = evMerged.remoteIds;
+      newEventsToPush = evMerged.unsyncedNewLocals || [];
       saveEvents();
 
       if (!state.dayStickers) state.dayStickers = {};
@@ -1384,6 +1465,7 @@ async function pullRemoteSupabaseData() {
       );
       state.todos = tdMerged.merged;
       remoteSnapshotIds.todos = tdMerged.remoteIds;
+      newTodosToPush = tdMerged.unsyncedNewLocals || [];
       saveTodos();
 
       const diMerged = mergeRemoteWithLocalPreservingCollisions(
@@ -1394,10 +1476,16 @@ async function pullRemoteSupabaseData() {
       );
       state.diaries = diMerged.merged;
       remoteSnapshotIds.diaries = diMerged.remoteIds;
+      newDiariesToPush = diMerged.unsyncedNewLocals || [];
       saveDiaries();
     } finally {
       isRemoteUpdating = false;
     }
+
+    // 로컬에만 있던 실제 기록을 서버로 자동 업로드하여 두 폰을 100% 일치시킴
+    for (const ev of newEventsToPush) { pushRemoteEvent('insert', ev); }
+    for (const td of newTodosToPush) { pushRemoteTodo('insert', td); }
+    for (const di of newDiariesToPush) { pushRemoteDiary('insert', di); }
 
     renderCalendar();
     renderSelectedDateView();
@@ -1420,6 +1508,19 @@ function setupSupabaseRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, async payload => {
       if (isRemoteUpdating) return;
       if ((payload.new && isSystemLockRecordId(payload.new.id)) || (payload.old && isSystemLockRecordId(payload.old.id))) return;
+      if ((payload.new && isCoupleSettingsRecordId(payload.new.id)) || (payload.old && isCoupleSettingsRecordId(payload.old.id))) {
+        if (payload.new && payload.new.title) {
+          const dec = String(payload.new.title).startsWith('ENC1:')
+            ? await decryptCoupleField(payload.new.title)
+            : payload.new.title;
+          if (dec && await applyDecodedCoupleSettings(dec)) {
+            renderCalendar();
+            renderSelectedDateView();
+            showToast('상대방이 기념일·꾸미기 설정을 변경했어요! 💍');
+          }
+        }
+        return;
+      }
       if ((payload.new && isStickerRecordId(payload.new.id)) || (payload.old && isStickerRecordId(payload.old.id))) {
         if (!state.dayStickers) state.dayStickers = {};
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
@@ -2971,6 +3072,7 @@ window.selectStickerTheme = function(themeId) {
   renderCalendar();
   renderTodos();
   renderAllDiaries();
+  pushRemoteCoupleSettings();
   const found = getActiveStickerTheme();
   if (themeId === 'none') {
     showToast('심플 기본 달력으로 변경했어요 ✨');
@@ -4159,6 +4261,8 @@ function setupEventListeners() {
     renderLegend();
     updateOwnerButtons();
     renderSelectedDateView();
+    renderTodos();
+    pushRemoteCoupleSettings();
     showToast('이름을 저장했어요! 💑');
   });
   // 할 일 빠른 추가 (Enter로 연속 입력)
@@ -4485,6 +4589,8 @@ function setupEventListeners() {
       state.anniversaryDate = anniv;
       localStorage.setItem('cal_anniversary', anniv);
       updateDDayBadge();
+      renderCalendar();
+      pushRemoteCoupleSettings();
       showToast('기념일을 저장했어요! 💍');
     }
   });
