@@ -1358,6 +1358,11 @@ async function applyDecodedCoupleSettings(rawJsonStr) {
       state.stickerBgOpacity = String(cfg.stickerBgOpacity);
       localStorage.setItem('cal_sticker_bg_opacity', state.stickerBgOpacity);
     }
+    if (cfg.calendarSize && ['normal', 'large', 'xlarge'].includes(cfg.calendarSize)) {
+      state.calendarSize = cfg.calendarSize;
+      localStorage.setItem('cal_size_mode', state.calendarSize);
+      updateCalendarSizeToggleUi();
+    }
     renderStickerUiEverywhere();
     renderLegend();
     updateOwnerButtons();
@@ -1395,6 +1400,7 @@ async function pushRemoteCoupleSettings() {
       stickerThemeId: state.stickerThemeId,
       stickerSize: state.stickerSize,
       stickerBgOpacity: state.stickerBgOpacity,
+      calendarSize: state.calendarSize || 'large',
       updatedAt: Date.now()
     };
     const enc = await encryptCoupleField(JSON.stringify(payloadObj));
@@ -1658,8 +1664,13 @@ function setupSupabaseRealtime() {
       showToast('상대방이 일기를 등록했어요! 📖');
     })
     .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      if (status === 'SUBSCRIBED') {
+        renderAuthUiState();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         updateSupabaseBadge('error', '🟠 재연결 대기', 'bg-amber-50 text-amber-700 border border-amber-200');
+        setTimeout(() => {
+          if (!document.hidden && isAuthorizedCoupleSession()) setupSupabaseRealtime();
+        }, 4000);
       }
     });
 }
@@ -2525,6 +2536,7 @@ let state = {
   currentMonth: new Date().getMonth(),
   selectedDate: formatDate(new Date()),
   calendarView: 'month', // 'month' (월간) or 'week' (주간 접기)
+  calendarSize: localStorage.getItem('cal_size_mode') || 'large', // 'normal' | 'large' | 'xlarge'
   currentSubTab: 'events', // 'events' or 'diary' (선택 날짜 카드 서브탭)
   anniversaryDate: localStorage.getItem('cal_anniversary') || '2024-05-18',
   currentThemeId: localStorage.getItem('cal_theme_id') || 'indigo',
@@ -3376,7 +3388,20 @@ function updateDDayBadge() {
 // 📅 달력 렌더링 (월간 / 주간 접기 지원 -> 스크롤 대폭 감소!)
 // ==============================================================================
 
+function updateCalendarSizeToggleUi() {
+  const txtEl = document.getElementById('toggleCalendarSizeText');
+  if (!txtEl) return;
+  const mode = state.calendarSize || 'large';
+  txtEl.textContent = mode === 'xlarge' ? '특대' : (mode === 'normal' ? '보통' : '크게');
+}
+
+function compactCalendarEventTitle(rawTitle) {
+  const s = String(rawTitle || '').trim();
+  return s.replace(/^([^\w\s가-힣ㄱ-ㅎㅏ-ㅣ]+)\s+/, '$1');
+}
+
 function renderCalendar() {
+  updateCalendarSizeToggleUi();
   calendarMonthTitle.textContent = `${state.currentYear}년 ${state.currentMonth + 1}월`;
   calendarDaysGrid.innerHTML = '';
 
@@ -3405,10 +3430,11 @@ function renderCalendar() {
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const dayEl = document.createElement('div');
       const dayOfWeek = (firstDayIndex - 1 - i) % 7;
-      dayEl.className = 'py-1 flex flex-col items-center justify-center text-slate-300 select-none';
+      const prevMinH = state.calendarSize === 'xlarge' ? 'min-h-[118px]' : (state.calendarSize === 'normal' ? 'min-h-[80px]' : 'min-h-[98px]');
+      dayEl.className = `cal-day-cell rounded-xl py-1.5 flex flex-col items-center justify-start text-slate-300 select-none opacity-60 ${prevMinH}`;
       if (dayOfWeek === 0) dayEl.classList.add('text-rose-200');
       else if (dayOfWeek === 6) dayEl.classList.add('text-blue-200');
-      dayEl.innerHTML = `<span class="text-xs">${prevLastDate - i}</span><span class="h-2"></span>`;
+      dayEl.innerHTML = `<span class="text-[13px] font-semibold">${prevLastDate - i}</span>`;
       calendarDaysGrid.appendChild(dayEl);
     }
 
@@ -3436,8 +3462,17 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   const dayDiaries = state.diaries.filter(d => d.date === dateStr);
 
+  const sizeMode = state.calendarSize || 'large';
+  let minHeightClass = 'min-h-[98px] sm:min-h-[108px]';
+  if (state.calendarView === 'week') {
+    minHeightClass = sizeMode === 'xlarge' ? 'min-h-[138px]' : 'min-h-[120px]';
+  } else if (sizeMode === 'xlarge') {
+    minHeightClass = 'min-h-[118px] sm:min-h-[128px]';
+  } else if (sizeMode === 'normal') {
+    minHeightClass = 'min-h-[80px] sm:min-h-[88px]';
+  }
   const cell = document.createElement('div');
-  cell.className = 'relative flex flex-col items-stretch cursor-pointer rounded-lg transition px-0.5 pt-1 pb-1 min-h-[70px] overflow-hidden';
+  cell.className = `cal-day-cell relative flex flex-col items-stretch cursor-pointer rounded-xl transition px-0.5 pt-1 pb-1 ${minHeightClass} overflow-hidden`;
 
   if (isSelected) {
     cell.classList.add('bg-theme-primary', 'shadow-xs');
@@ -3448,26 +3483,27 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
     cell.classList.add('hover:bg-slate-100');
   }
 
-  let numClass = 'text-slate-700 font-medium';
+  let numClass = 'text-slate-700 font-bold';
   if (isRedDay) numClass = 'text-rose-600 font-bold';
-  else if (isSaturday) numClass = 'text-blue-600 font-semibold';
+  else if (isSaturday) numClass = 'text-blue-600 font-bold';
   if (isSelected) numClass = 'text-white font-extrabold';
 
+  const numSizeClass = sizeMode === 'xlarge' ? 'text-[15px] sm:text-base' : (sizeMode === 'normal' ? 'text-[13px]' : 'text-[14px] sm:text-[15px]');
   const top = document.createElement('div');
-  top.className = 'flex items-center justify-center gap-0.5 leading-none h-4';
+  top.className = 'flex items-center justify-center gap-0.5 leading-none h-5 mb-0.5';
   const num = document.createElement('span');
-  num.className = 'text-xs ' + numClass;
+  num.className = numSizeClass + ' ' + numClass;
   num.textContent = dateNum;
   top.appendChild(num);
   if (dayDiaries.length > 0) {
     const moodMark = document.createElement('span');
-    moodMark.className = 'text-[9px]';
+    moodMark.className = 'text-[10px]';
     moodMark.textContent = dayDiaries[0].mood || '📔';
     top.appendChild(moodMark);
   }
   if (state.anniversaryDate && dateStr.slice(5) === state.anniversaryDate.slice(5) && dateStr >= state.anniversaryDate) {
     const ringMark = document.createElement('span');
-    ringMark.className = 'text-[9px]';
+    ringMark.className = 'text-[10px]';
     ringMark.textContent = '💍';
     top.appendChild(ringMark);
   }
@@ -3475,18 +3511,21 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
 
   if (holidayName) {
     const label = document.createElement('span');
-    label.className = 'block text-center text-[8.5px] leading-tight truncate font-bold ' + (isSelected ? 'text-rose-100' : 'text-rose-500');
+    label.className = 'block text-center text-[9.5px] leading-tight truncate font-bold mb-0.5 ' + (isSelected ? 'text-rose-100' : 'text-rose-500');
     label.textContent = holidayName;
     cell.appendChild(label);
   }
 
-  const maxChips = holidayName ? 1 : 2;
+  const maxChips = state.calendarView === 'week'
+    ? 4
+    : (sizeMode === 'xlarge' ? (holidayName ? 3 : 4) : (sizeMode === 'normal' ? (holidayName ? 1 : 2) : (holidayName ? 2 : 3)));
+  const allowTwoLineChip = (dayEvents.length <= 2 && !holidayName) || sizeMode === 'xlarge' || state.calendarView === 'week';
   const chipWrap = document.createElement('div');
-  chipWrap.className = 'mt-0.5 flex flex-col gap-[2px]';
+  chipWrap.className = 'mt-0.5 flex flex-col gap-[3px]';
   dayEvents.slice(0, maxChips).forEach(ev => {
     const color = eventColor(ev);
     const chip = document.createElement('span');
-    chip.className = 'block truncate text-[10px] leading-[14px] px-1.5 py-[1px] rounded text-left font-bold tracking-tight';
+    chip.className = 'cal-event-chip' + (allowTwoLineChip ? ' cal-chip-wrap-2' : '');
     if (isSelected) {
       chip.style.backgroundColor = 'rgba(255, 255, 255, 0.25)';
       chip.style.color = '#FFFFFF';
@@ -3494,12 +3533,12 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
       chip.style.backgroundColor = hexWithAlpha(color, '26');
       chip.style.color = color;
     }
-    chip.textContent = ev.title;
+    chip.textContent = compactCalendarEventTitle(ev.title);
     chipWrap.appendChild(chip);
   });
   if (dayEvents.length > maxChips) {
     const more = document.createElement('span');
-    more.className = 'block text-[9px] leading-[12px] text-left px-1 font-semibold ' + (isSelected ? 'text-white/80' : 'text-slate-400');
+    more.className = 'block text-[10px] leading-[12px] text-left px-1 font-extrabold ' + (isSelected ? 'text-white/85' : 'text-slate-400');
     more.textContent = '+' + (dayEvents.length - maxChips);
     chipWrap.appendChild(more);
   }
@@ -4283,8 +4322,10 @@ function setupEventListeners() {
       updateDDayBadge();
       renderTodos();
       if (isAuthorizedCoupleSession()) {
+        renderAuthUiState();
         renderPushReminderSettings();
         setupSupabaseRealtime();
+        pullRemoteSupabaseData();
       }
     }
   });
@@ -4466,6 +4507,20 @@ function setupEventListeners() {
     renderCalendar();
   });
 
+  const btnToggleCalendarSize = document.getElementById('btnToggleCalendarSize');
+  if (btnToggleCalendarSize) {
+    btnToggleCalendarSize.addEventListener('click', function() {
+      const cur = state.calendarSize || 'large';
+      const next = cur === 'large' ? 'xlarge' : (cur === 'xlarge' ? 'normal' : 'large');
+      state.calendarSize = next;
+      localStorage.setItem('cal_size_mode', next);
+      updateCalendarSizeToggleUi();
+      renderCalendar();
+      schedulePushCoupleSettings();
+      const label = next === 'xlarge' ? '특대형(아주 크게)' : (next === 'normal' ? '보통 크기' : '크게(기본)');
+      showToast('달력 크기를 [' + label + ']로 바꿨어요! 📅');
+    });
+  }
 
   inputBgPhoto.addEventListener('change', async function(e) {
     const file = e.target.files && e.target.files[0];
