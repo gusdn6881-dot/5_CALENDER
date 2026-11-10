@@ -578,8 +578,8 @@ function updateSupabaseBadge(status, text, colorClass) {
   }
   const headerBtn = document.getElementById('btnHeaderSyncStatus');
   if (headerBtn) {
-    headerBtn.className = 'text-[11px] px-2.5 py-1 rounded-full font-bold transition ' + colorClass;
-    headerBtn.textContent = text;
+    headerBtn.className = 'whitespace-nowrap text-[10.5px] px-2 py-1 rounded-full font-bold transition ' + colorClass;
+    headerBtn.textContent = String(text || '').replace(' (🔒보호됨)', ' 🔒');
   }
 }
 
@@ -2531,6 +2531,10 @@ function importBackup(file) {
 }
 
 // 3. 상태 관리
+if (!localStorage.getItem('cal_size_v38_default')) {
+  localStorage.setItem('cal_size_v38_default', '1');
+  localStorage.setItem('cal_size_mode', 'large');
+}
 let state = {
   currentYear: new Date().getFullYear(),
   currentMonth: new Date().getMonth(),
@@ -3430,7 +3434,7 @@ function renderCalendar() {
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const dayEl = document.createElement('div');
       const dayOfWeek = (firstDayIndex - 1 - i) % 7;
-      const prevMinH = state.calendarSize === 'xlarge' ? 'min-h-[118px]' : (state.calendarSize === 'normal' ? 'min-h-[80px]' : 'min-h-[98px]');
+      const prevMinH = state.calendarSize === 'xlarge' ? 'min-h-[126px]' : (state.calendarSize === 'normal' ? 'min-h-[94px]' : 'min-h-[110px]');
       dayEl.className = `cal-day-cell rounded-xl py-1.5 flex flex-col items-center justify-start text-slate-300 select-none opacity-60 ${prevMinH}`;
       if (dayOfWeek === 0) dayEl.classList.add('text-rose-200');
       else if (dayOfWeek === 6) dayEl.classList.add('text-blue-200');
@@ -3463,13 +3467,13 @@ function renderDateCell(dateNum, dateStr, dayOfWeek, isToday, isSelected, isCurr
   const dayDiaries = state.diaries.filter(d => d.date === dateStr);
 
   const sizeMode = state.calendarSize || 'large';
-  let minHeightClass = 'min-h-[98px] sm:min-h-[108px]';
+  let minHeightClass = 'min-h-[110px] sm:min-h-[118px]';
   if (state.calendarView === 'week') {
-    minHeightClass = sizeMode === 'xlarge' ? 'min-h-[138px]' : 'min-h-[120px]';
+    minHeightClass = sizeMode === 'xlarge' ? 'min-h-[144px]' : 'min-h-[126px]';
   } else if (sizeMode === 'xlarge') {
-    minHeightClass = 'min-h-[118px] sm:min-h-[128px]';
+    minHeightClass = 'min-h-[126px] sm:min-h-[136px]';
   } else if (sizeMode === 'normal') {
-    minHeightClass = 'min-h-[80px] sm:min-h-[88px]';
+    minHeightClass = 'min-h-[94px] sm:min-h-[102px]';
   }
   const cell = document.createElement('div');
   cell.className = `cal-day-cell relative flex flex-col items-stretch cursor-pointer rounded-xl transition px-0.5 pt-1 pb-1 ${minHeightClass} overflow-hidden`;
